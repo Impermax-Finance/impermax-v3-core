@@ -1,0 +1,11 @@
+Borrowable
+- manage losses frax like
+Oracle
+- figure this shit out
+Collateral
+- do this from 0
+- per mint e redeem passo l'id dell'nft
+- ho due opzioni di design:
+  - posso settare una posizione per nft -> è più semplice e non c'è il problema del gas overflow
+  - posso creare un array per ricordare gli nft di un utente e permettere di creare una posizione con più nft come collaterale
+  - la prima opzione mi piace molto perchè ci sono meno problemi con il calcolo dell'available liquidity e con la liquidazione
