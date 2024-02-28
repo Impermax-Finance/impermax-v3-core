@@ -1,38 +1,29 @@
 pragma solidity >=0.5.0;
 
-// commented is what is not needed by Collateral
+// TODO make sure we keep back-compatibility with Uniswap V2
 
 interface ITokenizedCLPosition {
 	// ERC-721
-	//function balanceOf(address _owner) external view returns (uint256);
 	function ownerOf(uint256 _tokenId) external view returns (address);
-	//function safeTransferFrom(address _from, address _to, uint256 _tokenId, bytes data) external payable;
-	//function safeTransferFrom(address _from, address _to, uint256 _tokenId) external payable;
-	function transferFrom(address _from, address _to, uint256 _tokenId) external payable;
-	//function approve(address _approved, uint256 _tokenId) external payable;
-	//function setApprovalForAll(address _operator, bool _approved) external;
-	//function getApproved(uint256 _tokenId) external view returns (address);
-	//function isApprovedForAll(address _owner, address _operator) external view returns (bool);
-	
-	//event Transfer(address indexed _from, address indexed _to, uint256 indexed _tokenId);
-	//event Approval(address indexed _owner, address indexed _approved, uint256 indexed _tokenId);
-	//event ApprovalForAll(address indexed _owner, address indexed _operator, bool _approved);
+	function safeTransferFrom(address from, address to, uint256 tokenId, bytes calldata data) external;
+	function safeTransferFrom(address from, address to, uint256 tokenId) external;
+	function transferFrom(address from, address to, uint256 tokenId) external;
 	
 	// Global state
 	function token0() external view returns (address);
 	function token1() external view returns (address);
-	// X64?
-	function marketPrice() external view returns (uint);
-	function oraclePrice() external returns (uint);
+	//function marketPriceSqrtX96() external view returns (uint160);
+	function oraclePriceSqrtX96() external returns (uint160);
 	
 	// Position state
-	// IS IT POSSIBLE TO SAVE STORAGE SPACE HERE? Potrei fare 128, 64, 64
 	function position(uint256 _tokenId) external view returns (
 		uint128 liquidity,
-		uint64 paX64,
-		uint64 pbX64,
+		uint160 paSqrtX96,
+		uint160 pbSqrtX96
 	);
-	function liquidity(uint256 _tokenId) external view returns (uint);
-	function PA(uint256 _tokenId) external view returns (uint);
-	function PB(uint256 _tokenId) external view returns (uint);
+	
+	//function mint(address to, uint160 paSqrtX96, uint160 pbSqrtX96) external;
+	//function redeem(address to, uint256 tokenId) external;
+	//function join(uint256 tokenIdFrom, uint256 tokenIdTo) external; // or increase
+	function split(uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId);
 }

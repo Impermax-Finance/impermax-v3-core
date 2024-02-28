@@ -2,6 +2,7 @@ pragma solidity =0.5.16;
 
 import "./libraries/SafeMath.sol";
 import "./interfaces/IERC721.sol";
+import "./interfaces/IERC721Receiver.sol";
 
 contract ImpermaxERC721 is IERC721 {
 	using SafeMath for uint;
@@ -9,13 +10,13 @@ contract ImpermaxERC721 is IERC721 {
 	string public name;
 	string public symbol;
 	
-	mapping(address owner => uint) public balanceOf;
-	mapping(uint256 tokenId => address) public ownerOf;
-	mapping(uint256 tokenId => address) public getApproved;
-	mapping(address owner => mapping(address operator => bool)) public isApprovedForAll;
+	mapping(address => uint) public balanceOf;
+	mapping(uint256 => address) public ownerOf;
+	mapping(uint256 => address) public getApproved;
+	mapping(address => mapping(address => bool)) public isApprovedForAll;
 	
 	bytes32 public DOMAIN_SEPARATOR;
-	mapping(uint256 tokenId => uint) public nonces;
+	mapping(uint256 => uint) public nonces;
 
 	constructor() public {}
 	
@@ -38,25 +39,25 @@ contract ImpermaxERC721 is IERC721 {
 		);
 	}
 	
-	function _isAuthorized(address owner, address spender, uint256 tokenId) internal view returns (bool) {
-		return spender != address(0) && (owner == spender || isApprovedForAll[owner][auth] || getApproved(tokenId) == spender);
+	function _isAuthorized(address owner, address operator, uint256 tokenId) internal view returns (bool) {
+		return operator != address(0) && (owner == operator || isApprovedForAll[owner][operator] || getApproved[tokenId] == operator);
 	}
 
-	function _checkAuthorized(address owner, address spender, uint256 tokenId) internal view {
-		require(_isAuthorized(owner, spender, tokenId), "ImpermaxERC721: UNAUTHORIZED");
+	function _checkAuthorized(address owner, address operator, uint256 tokenId) internal view {
+		require(_isAuthorized(owner, operator, tokenId), "ImpermaxERC721: UNAUTHORIZED");
 	}
 
 	function _update(address to, uint256 tokenId, address auth) internal returns (address from) {
 		from = ownerOf[tokenId];
-		if (auth != address(0)) _checkAuthorized(from, auth, tokenId));
+		if (auth != address(0)) _checkAuthorized(from, auth, tokenId);
 
 		if (from != address(0)) {
 			_approve(address(0), tokenId, address(0));
-			_balances[from] -= 1;
+			balanceOf[from] -= 1;
 		}
 
 		if (to != address(0)) {
-			_balances[to] += 1;
+			balanceOf[to] += 1;
 		}
 
 		ownerOf[tokenId] = to;
@@ -113,9 +114,9 @@ contract ImpermaxERC721 is IERC721 {
 	}
 	
 	function _checkOnERC721Received(address from, address to, uint256 tokenId, bytes memory data) internal {
-		if (to.code.length > 0) {
+		if (isContract(to)) {
 			bytes4 retval = IERC721Receiver(to).onERC721Received(msg.sender, from, tokenId, data);
-			require(retval == IERC721Receiver.onERC721Received.selector, "ImpermaxERC721: INVALID_RECEIVER");
+			require(retval == bytes4(keccak256("onERC721Received(address,address,uint256,bytes)")), "ImpermaxERC721: INVALID_RECEIVER");
 		}
 	}
 	
@@ -135,7 +136,7 @@ contract ImpermaxERC721 is IERC721 {
 		_safeTransfer(from, to, tokenId, msg.sender);
 	}
 	
-	function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) external {
+	function safeTransferFrom(address from, address to, uint256 tokenId, bytes calldata data) external {
 		_safeTransfer(from, to, tokenId, data, msg.sender);
 	}
 	
@@ -156,7 +157,16 @@ contract ImpermaxERC721 is IERC721 {
 	// keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)");
 	bytes32 public constant PERMIT_TYPEHASH = 0x49ecf333e5b8c95c40fdafc95c1ad136e8914a8fb55e9dc8bb01eaa83a2df9ad;
 	function permit(address spender, uint tokenId, uint deadline, uint8 v, bytes32 r, bytes32 s) external {
-		_checkSignature(owner, spender, value, deadline, v, r, s, PERMIT_TYPEHASH);
+		_checkSignature(spender, tokenId, deadline, v, r, s, PERMIT_TYPEHASH);
 		_approve(spender, tokenId, address(0));
+	}
+	
+	/* Utilities */
+	function isContract(address _addr) private view returns (bool){
+		uint32 size;
+		assembly {
+			size := extcodesize(_addr)
+		}
+		return (size > 0);
 	}
 }

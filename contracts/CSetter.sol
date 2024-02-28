@@ -1,36 +1,39 @@
 pragma solidity =0.5.16;
 
 import "./CStorage.sol";
-import "./PoolToken.sol";
+import "./ImpermaxERC721.sol";
 import "./interfaces/IFactory.sol";
-import "./interfaces/ISimpleUniswapOracle.sol";
 
-contract CSetter is PoolToken, CStorage {
+contract CSetter is ImpermaxERC721, CStorage {
 
 	uint public constant SAFETY_MARGIN_SQRT_MIN = 1.00e18; //safetyMargin: 100%
 	uint public constant SAFETY_MARGIN_SQRT_MAX = 1.58113884e18; //safetyMargin: 250%
 	uint public constant LIQUIDATION_INCENTIVE_MIN = 1.00e18; //100%
 	uint public constant LIQUIDATION_INCENTIVE_MAX = 1.05e18; //105%
 	uint public constant LIQUIDATION_FEE_MAX = 0.08e18; //8%
-
+	
 	event NewSafetyMargin(uint newSafetyMarginSqrt);
 	event NewLiquidationIncentive(uint newLiquidationIncentive);
 	event NewLiquidationFee(uint newLiquidationFee);
+
+	// called once by the factory
+	function _setFactory() external {
+		require(factory == address(0), "Impermax: FACTORY_ALREADY_SET");
+		factory = msg.sender;
+	}
 	
-	// called once by the factory at the time of deployment
 	function _initialize (
 		string calldata _name,
 		string calldata _symbol,
-		address _underlying, 
+		address _tokenizedCLPosition, 
 		address _borrowable0, 
 		address _borrowable1
 	) external {
 		require(msg.sender == factory, "Impermax: UNAUTHORIZED"); // sufficient check
 		_setName(_name, _symbol);
-		underlying = _underlying;
+		tokenizedCLPosition = _tokenizedCLPosition;
 		borrowable0 = _borrowable0;
 		borrowable1 = _borrowable1;
-		simpleUniswapOracle = IFactory(factory).simpleUniswapOracle();
 	}
 
 	function _setSafetyMarginSqrt(uint newSafetyMarginSqrt) external nonReentrant {
@@ -59,5 +62,16 @@ contract CSetter is PoolToken, CStorage {
 	
 	function _checkAdmin() internal view {
 		require(msg.sender == IFactory(factory).admin(), "Impermax: UNAUTHORIZED");
+	}
+	
+	/*** Utilities ***/
+	
+	// prevents a contract from calling itself, directly or indirectly.
+	bool internal _notEntered = true;
+	modifier nonReentrant() {
+		require(_notEntered, "Impermax: REENTERED");
+		_notEntered = false;
+		_;
+		_notEntered = true;
 	}
 }

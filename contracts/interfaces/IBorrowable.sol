@@ -7,9 +7,9 @@ interface IBorrowable {
 	event Transfer(address indexed from, address indexed to, uint value);
 	event Approval(address indexed owner, address indexed spender, uint value);
 	
-	function name() external pure returns (string memory);
-	function symbol() external pure returns (string memory);
-	function decimals() external pure returns (uint8);
+	function name() external view returns (string memory);
+	function symbol() external view returns (string memory);
+	function decimals() external view returns (uint8);
 	function totalSupply() external view returns (uint);
 	function balanceOf(address owner) external view returns (uint);
 	function allowance(address owner, address spender) external view returns (uint);
@@ -44,25 +44,24 @@ interface IBorrowable {
 	/*** Borrowable ***/
 
 	event BorrowApproval(address indexed owner, address indexed spender, uint value);
-	event Borrow(address indexed sender, address indexed borrower, address indexed receiver, uint borrowAmount, uint repayAmount, uint accountBorrowsPrior, uint accountBorrows, uint totalBorrows);
-	event Liquidate(address indexed sender, address indexed borrower, address indexed liquidator, uint seizeTokens, uint repayAmount, uint accountBorrowsPrior, uint accountBorrows, uint totalBorrows);
+	event Borrow(address indexed sender, uint256 indexed tokenId, address indexed receiver, uint borrowAmount, uint repayAmount, uint accountBorrowsPrior, uint accountBorrows, uint totalBorrows);
+	event Liquidate(address indexed sender, uint256 indexed tokenId, address indexed liquidator, uint seizeTokenId, uint repayAmount, uint accountBorrowsPrior, uint accountBorrows, uint totalBorrows);
 	
-	function BORROW_FEE() external pure returns (uint);
 	function collateral() external view returns (address);
 	function reserveFactor() external view returns (uint);
 	function exchangeRateLast() external view returns (uint);
 	function borrowIndex() external view returns (uint);
 	function totalBorrows() external view returns (uint);
 	function borrowAllowance(address owner, address spender) external view returns (uint);
-	function borrowBalance(address borrower) external view returns (uint);	
+	function borrowBalance(uint tokenId) external view returns (uint);	
 	function borrowTracker() external view returns (address);
 	
 	function BORROW_PERMIT_TYPEHASH() external pure returns (bytes32);
 	function borrowApprove(address spender, uint256 value) external returns (bool);
 	function borrowPermit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
-	function borrow(address borrower, address receiver, uint borrowAmount, bytes calldata data) external;
-	function liquidate(address borrower, address liquidator) external returns (uint seizeTokens);
-	function trackBorrow(address borrower) external;
+	function borrow(uint256 tokenId, address receiver, uint borrowAmount, bytes calldata data) external;
+	function liquidate(uint256 tokenId, uint repayAmount, address liquidator, bytes calldata data) external returns (uint seizeTokenId);
+	function trackBorrow(uint256 tokenId) external;
 	
 	/*** Borrowable Interest Rate Model ***/
 

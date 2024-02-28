@@ -10,7 +10,7 @@ contract BStorage {
 		uint112 principal;		// amount in underlying when the borrow was last updated
 		uint112 interestIndex;	// borrow index when borrow was last updated
 	}
-	mapping(address => BorrowSnapshot) internal borrowBalances;	
+	mapping(uint256 => BorrowSnapshot) internal borrowBalances;	
 
 	// use one memory slot
 	uint112 public borrowIndex = 1e18;

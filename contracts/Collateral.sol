@@ -1,153 +1,123 @@
 pragma solidity =0.5.16;
 
-import "./PoolToken.sol";
-import "./CStorage.sol";
 import "./CSetter.sol";
 import "./interfaces/IBorrowable.sol";
 import "./interfaces/ICollateral.sol";
 import "./interfaces/IFactory.sol";
-import "./interfaces/ISimpleUniswapOracle.sol";
-import "./interfaces/IImpermaxCallee.sol";
-import "./interfaces/IUniswapV2Pair.sol";
-import "./libraries/UQ112x112.sol";
-import "./libraries/Math.sol";
+import "./interfaces/ITokenizedCLPosition.sol";
+import "./libraries/CollateralMath.sol";
 
-contract Collateral is ICollateral, PoolToken, CStorage, CSetter {
-	using UQ112x112 for uint224;
-	
+contract ImpermaxV3Collateral is ICollateral, CSetter {	
+	using CollateralMath for CollateralMath.PositionObject;
+
 	constructor() public {}
 	
 	/*** Collateralization Model ***/
 	
-	function getTwapPrice112x112() public returns(uint224 twapPrice112x112) {
-		(twapPrice112x112,) = ISimpleUniswapOracle(simpleUniswapOracle).getResult(underlying);
-	}
-
-	// returns the prices of borrowable0's and borrowable1's underlyings with collateral's underlying as denom
-	function getPrices() public returns (uint price0, uint price1) {
-		(uint224 twapPrice112x112,) = ISimpleUniswapOracle(simpleUniswapOracle).getResult(underlying);
-		(uint112 reserve0, uint112 reserve1,) = IUniswapV2Pair(underlying).getReserves();
-		uint256 collateralTotalSupply = IUniswapV2Pair(underlying).totalSupply();
-		
-		uint224 currentPrice112x112 = UQ112x112.encode(reserve1).uqdiv(reserve0);
-		uint256 adjustmentSquared = uint256(twapPrice112x112).mul(2**32).div(currentPrice112x112);
-		uint256 adjustment = Math.sqrt(adjustmentSquared.mul(2**32));
-
-		uint256 currentBorrowable0Price = uint256(collateralTotalSupply).mul(1e18).div(reserve0*2);
-		uint256 currentBorrowable1Price = uint256(collateralTotalSupply).mul(1e18).div(reserve1*2);
-		
-		price0 = currentBorrowable0Price.mul(adjustment).div(2**32);
-		price1 = currentBorrowable1Price.mul(2**32).div(adjustment);
-		
-		/*
-		 * Price calculation errors may happen in some edge pairs where
-		 * reserve0 / reserve1 is close to 2**112 or 1/2**112
-		 * We're going to prevent users from using pairs at risk from the UI
-		 */
-		require(price0 > 100, "Impermax: PRICE_CALCULATION_ERROR");
-		require(price1 > 100, "Impermax: PRICE_CALCULATION_ERROR");
+	function _getPriceSqrtX96() internal returns (uint) {
+		return ITokenizedCLPosition(tokenizedCLPosition).oraclePriceSqrtX96();
 	}
 	
-	// returns liquidity in  collateral's underlying
-	function _calculateLiquidity(uint amountCollateral, uint amount0, uint amount1) internal returns (uint liquidity, uint shortfall) {
-		uint _safetyMarginSqrt = safetyMarginSqrt;
-		(uint price0, uint price1) = getPrices();
-		
-		uint a = amount0.mul(price0).div(1e18);
-		uint b = amount1.mul(price1).div(1e18);
-		if(a < b) (a, b) = (b, a);
-		a = a.mul(_safetyMarginSqrt).div(1e18);
-		b = b.mul(1e18).div(_safetyMarginSqrt);
-		uint collateralNeeded = a.add(b).mul(liquidationPenalty()).div(1e18);		
+	function _getPositionObjectAmounts(uint tokenId, uint debtX, uint debtY) internal view returns (CollateralMath.PositionObject memory positionObject) {
+		if (debtX == uint(-1)) debtX = IBorrowable(borrowable0).borrowBalance(tokenId);
+		if (debtY == uint(-1)) debtY = IBorrowable(borrowable1).borrowBalance(tokenId);
+		(uint128 liquidity, uint160 paSqrtX96, uint160 pbSqrtX96) = 
+			ITokenizedCLPosition(tokenizedCLPosition).position(tokenId);
+		positionObject = CollateralMath.newPosition(liquidity, paSqrtX96, pbSqrtX96, debtX, debtY, liquidationPenalty(), safetyMarginSqrt);
+	}
+	
+	function _getPositionObject(uint tokenId) internal view returns (CollateralMath.PositionObject memory positionObject) {
+		return _getPositionObjectAmounts(tokenId, uint(-1), uint(-1));
+	}
+	
+	/*** ERC721 Wrapper ***/
+	
+	function mint(address to, uint256 tokenId) external nonReentrant {
+		require(ownerOf[tokenId] == address(0), "ImpermaxCollateral: NFT_ALREADY_MINTED");
+		require(ITokenizedCLPosition(tokenizedCLPosition).ownerOf(tokenId) == address(this), "ImpermaxCollateral: NFT_NOT_RECEIVED");
+		_mint(to, tokenId);
+		emit Mint(to, tokenId);
+	}
 
-		if(amountCollateral >= collateralNeeded){
-			return (amountCollateral - collateralNeeded, 0);
+	function redeem(address to, uint256 tokenId, uint256 percentage, bytes memory data) public nonReentrant returns (uint256 newTokenId) {
+		require(percentage <= 1e18, "ImpermaxCollateral: PERCENTAGE_ABOVE_100");
+		_checkAuthorized(ownerOf[tokenId], msg.sender, tokenId);
+		
+		// optimistically redeem
+		if (percentage == 1e18) {
+			_burn(tokenId);
+			ITokenizedCLPosition(tokenizedCLPosition).safeTransferFrom(address(this), to, tokenId, data);
 		} else {
-			return (0, collateralNeeded - amountCollateral);
+			newTokenId = ITokenizedCLPosition(tokenizedCLPosition).split(tokenId, percentage);
+			ITokenizedCLPosition(tokenizedCLPosition).safeTransferFrom(address(this), to, newTokenId, data);
 		}
+		
+		// finally check that the position is not left underwater
+		require(!isLiquidatable(tokenId));
+		
+		emit Redeem(to, tokenId, percentage, newTokenId);
+	}
+	function redeem(address to, uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId) {
+		return redeem(to, tokenId, percentage, "");
 	}
 
-	/*** ERC20 ***/
-	
-	function _transfer(address from, address to, uint value) internal {
-		require(tokensUnlocked(from, value), "Impermax: INSUFFICIENT_LIQUIDITY");
-		super._transfer(from, to, value);
-	}
-	
-	function tokensUnlocked(address from, uint value) public returns (bool) {
-		uint _balance = balanceOf[from];
-		if (value > _balance) return false;
-		uint finalBalance = _balance - value;
-		uint amountCollateral = finalBalance.mul(exchangeRate()).div(1e18);
-		uint amount0 = IBorrowable(borrowable0).borrowBalance(from);
-		uint amount1 = IBorrowable(borrowable1).borrowBalance(from);
-		(, uint shortfall) = _calculateLiquidity(amountCollateral, amount0, amount1);
-		return shortfall == 0;
-	}
 	
 	/*** Collateral ***/
 	
-	function accountLiquidityAmounts(address borrower, uint amount0, uint amount1) public returns (uint liquidity, uint shortfall) {
-		if (amount0 == uint(-1)) amount0 = IBorrowable(borrowable0).borrowBalance(borrower);
-		if (amount1 == uint(-1)) amount1 = IBorrowable(borrowable1).borrowBalance(borrower);
-		uint amountCollateral = balanceOf[borrower].mul(exchangeRate()).div(1e18);
-		return _calculateLiquidity(amountCollateral, amount0, amount1);
+	function isLiquidatable(uint tokenId) public returns (bool) {
+		uint priceSqrtX96 = _getPriceSqrtX96();
+		CollateralMath.PositionObject memory positionObject = _getPositionObject(tokenId);
+		int liquidity = positionObject.getAvailableLiquidity(priceSqrtX96);
+		return liquidity < 0;
 	}
 	
-	function accountLiquidity(address borrower) public returns (uint liquidity, uint shortfall) {
-		return accountLiquidityAmounts(borrower, uint(-1), uint(-1));
-	}
-	
-	function canBorrow(address borrower, address borrowable, uint accountBorrows) public returns (bool) {
+	function canBorrow(uint tokenId, address borrowable, uint accountBorrows) public returns (bool) {
 		address _borrowable0 = borrowable0;
 		address _borrowable1 = borrowable1;
-		require(borrowable == _borrowable0 || borrowable == _borrowable1, "Impermax: INVALID_BORROWABLE" );
-		uint amount0 = borrowable == _borrowable0 ? accountBorrows : uint(-1);
-		uint amount1 = borrowable == _borrowable1 ? accountBorrows : uint(-1);
-		(, uint shortfall) = accountLiquidityAmounts(borrower, amount0, amount1);
-		return shortfall == 0;
+		require(borrowable == _borrowable0 || borrowable == _borrowable1, "ImpermaxCollateral: INVALID_BORROWABLE");
+		
+		uint priceSqrtX96 = _getPriceSqrtX96();
+		uint debtX = borrowable == _borrowable0 ? accountBorrows : uint(-1);
+		uint debtY = borrowable == _borrowable1 ? accountBorrows : uint(-1);
+		
+		CollateralMath.PositionObject memory positionObject = _getPositionObjectAmounts(tokenId, debtX, debtY);
+		int liquidity = positionObject.getAvailableLiquidity(priceSqrtX96);
+		return liquidity >= 0;
 	}
 	
 	// this function must be called from borrowable0 or borrowable1
-	function seize(address liquidator, address borrower, uint repayAmount) external returns (uint seizeTokens) {
+	function seize(uint tokenId, uint repayAmount, address liquidator, bytes calldata data) external nonReentrant returns (uint seizeTokenId) {
 		require(msg.sender == borrowable0 || msg.sender == borrowable1, "Impermax: UNAUTHORIZED");
 		
-		(, uint shortfall) = accountLiquidity(borrower);
-		require(shortfall > 0, "Impermax: INSUFFICIENT_SHORTFALL");
-		
-		uint price;
-		if (msg.sender == borrowable0) (price, ) = getPrices();
-		else  (, price) = getPrices();
-		
-		uint collateralEquivalent = repayAmount.mul(price).div( exchangeRate() );	
-		
-		seizeTokens = collateralEquivalent.mul(liquidationIncentive).div(1e18);		
-		balanceOf[borrower] = balanceOf[borrower].sub(seizeTokens, "Impermax: LIQUIDATING_TOO_MUCH");
-		balanceOf[liquidator] = balanceOf[liquidator].add(seizeTokens);
-		emit Transfer(borrower, liquidator, seizeTokens);
-		
-		if (liquidationFee > 0) {
-			uint seizeFee = collateralEquivalent.mul(liquidationFee).div(1e18);			
-			address reservesManager = IFactory(factory).reservesManager();
-			balanceOf[borrower] = balanceOf[borrower].sub(seizeFee, "Impermax: LIQUIDATING_TOO_MUCH");
-			balanceOf[reservesManager] = balanceOf[reservesManager].add(seizeFee);
-			emit Transfer(borrower, reservesManager, seizeFee);
+		uint repayToCollateralRatio;
+		{
+			uint priceSqrtX96 = _getPriceSqrtX96();
+			CollateralMath.PositionObject memory positionObject = _getPositionObject(tokenId);
+			
+			int liquidity = positionObject.getAvailableLiquidity(priceSqrtX96);
+			require(liquidity < 0, "ImpermaxCollateral: INSUFFICIENT_SHORTFALL");
+			
+			uint collateralValue = positionObject.getCollateralValue(priceSqrtX96);
+			uint repayValue = msg.sender == borrowable0
+				? CollateralMath.getValue(priceSqrtX96, repayAmount, 0)
+				: CollateralMath.getValue(priceSqrtX96, 0, repayAmount);
+				
+			repayToCollateralRatio = repayValue.mul(1e18).div(collateralValue);
+			require(repayToCollateralRatio.mul(liquidationPenalty()) <= 1e36, "ImpermaxCollateral: LIQUIDATING_TOO_MUCH");
 		}
-	}
-
-	// this low-level function should be called from another contract
-	function flashRedeem(address redeemer, uint redeemAmount, bytes calldata data) external nonReentrant update {
-		require(redeemAmount <= totalBalance, "Impermax: INSUFFICIENT_CASH");
 		
-		// optimistically transfer funds
-		_safeTransfer(redeemer, redeemAmount);
-		if (data.length > 0) IImpermaxCallee(redeemer).impermaxRedeem(msg.sender, redeemAmount, data);
+		uint seizePercentage = repayToCollateralRatio.mul(liquidationIncentive).div(1e18);
+		uint feePercentage = liquidationFee.mul(1e18).div(uint(1e18).sub(seizePercentage));	
 		
-		uint redeemTokens = balanceOf[address(this)];
-		uint declaredRedeemTokens = redeemAmount.mul(1e18).div( exchangeRate() ).add(1); // rounded up
-		require(redeemTokens >= declaredRedeemTokens, "Impermax: INSUFFICIENT_REDEEM_TOKENS");
+		seizeTokenId = ITokenizedCLPosition(tokenizedCLPosition).split(tokenId, seizePercentage);
+		ITokenizedCLPosition(tokenizedCLPosition).safeTransferFrom(address(this), liquidator, seizeTokenId, data);
+		emit Seize(liquidator, tokenId, seizePercentage, seizeTokenId);
 		
-		_burn(address(this), redeemTokens);
-		emit Redeem(msg.sender, redeemer, redeemAmount, redeemTokens);
+		if (feePercentage > 0) {
+			uint feeTokenId = ITokenizedCLPosition(tokenizedCLPosition).split(tokenId, feePercentage);		
+			address reservesManager = IFactory(factory).reservesManager();
+			_mint(reservesManager, feeTokenId);
+			emit Seize(reservesManager, tokenId, feePercentage, feeTokenId);
+		}
 	}
 }
