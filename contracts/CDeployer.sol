@@ -1,6 +1,6 @@
 pragma solidity =0.5.16;
 
-import "./Collateral.sol";
+import "./ImpermaxV3Collateral.sol";
 import "./interfaces/ICDeployer.sol";
 
 /*
