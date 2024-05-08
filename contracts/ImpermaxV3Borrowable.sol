@@ -146,7 +146,6 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 		// TODO emit events
 	}
 		
-	
 	function trackBorrow(uint256 tokenId) external {
 		_trackBorrow(tokenId, borrowBalance(tokenId), borrowIndex);
 	}
