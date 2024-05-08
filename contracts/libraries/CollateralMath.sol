@@ -107,10 +107,27 @@ library CollateralMath {
 		return safeInt256(collateralValue) - safeInt256(collateralNeeded);
 	}
 	
+	// collateralValue / (debtValue * liquidationPenalty)
+	function getPostLiquidationCollateralRatio(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
+		uint collateralNeeded = getDebtValue(positionObject, priceSqrtX96).mul(positionObject.liquidationPenalty).div(1e18);
+		uint collateralValue = getCollateralValue(positionObject, priceSqrtX96);
+		return collateralValue.mul(1e18).div(collateralNeeded);
+	}
+	
 	// min(getLiquidityPostLiquidation(price / safetyMargin), getLiquidityPostLiquidation(price * safetyMargin))
 	function getAvailableLiquidity(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (int) {
 		int a = getLiquidityPostLiquidation(positionObject, priceSqrtX96.mul(1e18).div(positionObject.safetyMarginSqrt));
 		int b = getLiquidityPostLiquidation(positionObject, priceSqrtX96.mul(positionObject.safetyMarginSqrt).div(1e18));
 		return a < b ? a : b;
+	}
+	
+	function isLiquidatable(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (bool) {
+		int liquidity = getAvailableLiquidity(positionObject, priceSqrtX96);
+		return liquidity < 0;
+	}
+	
+	function isUnderwater(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (bool) {
+		int liquidity = getLiquidityPostLiquidation(positionObject, priceSqrtX96);
+		return liquidity < 0;
 	}
 }

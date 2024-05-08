@@ -67,8 +67,13 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	function isLiquidatable(uint tokenId) public returns (bool) {
 		uint priceSqrtX96 = _getPriceSqrtX96();
 		CollateralMath.PositionObject memory positionObject = _getPositionObject(tokenId);
-		int liquidity = positionObject.getAvailableLiquidity(priceSqrtX96);
-		return liquidity < 0;
+		return positionObject.isLiquidatable(priceSqrtX96);
+	}
+	
+	function isUnderwater(uint tokenId) public returns (bool) {
+		uint priceSqrtX96 = _getPriceSqrtX96();
+		CollateralMath.PositionObject memory positionObject = _getPositionObject(tokenId);
+		return positionObject.isUnderwater(priceSqrtX96);
 	}
 	
 	function canBorrow(uint tokenId, address borrowable, uint accountBorrows) public returns (bool) {
@@ -81,21 +86,33 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		uint debtY = borrowable == _borrowable1 ? accountBorrows : uint(-1);
 		
 		CollateralMath.PositionObject memory positionObject = _getPositionObjectAmounts(tokenId, debtX, debtY);
-		int liquidity = positionObject.getAvailableLiquidity(priceSqrtX96);
-		return liquidity >= 0;
+		return !positionObject.isLiquidatable(priceSqrtX96);
+	}
+	
+	function restructureBadDebt(uint tokenId) external nonReentrant {
+		uint priceSqrtX96 = _getPriceSqrtX96();
+		CollateralMath.PositionObject memory positionObject = _getPositionObject(tokenId);
+		uint postLiquidationCollateralRatio = positionObject.getPostLiquidationCollateralRatio(priceSqrtX96);
+		require(postLiquidationCollateralRatio < 1e18, "ImpermaxCollateral: NOT_UNDERWATER");
+		IBorrowable(borrowable0).restructureDebt(tokenId, postLiquidationCollateralRatio);
+		IBorrowable(borrowable1).restructureDebt(tokenId, postLiquidationCollateralRatio);
+		positionObject = _getPositionObject(tokenId);
+		require(!positionObject.isUnderwater(priceSqrtX96), "this should never happen");
+		
+		// TODO emit events
 	}
 	
 	// this function must be called from borrowable0 or borrowable1
 	function seize(uint tokenId, uint repayAmount, address liquidator, bytes calldata data) external nonReentrant returns (uint seizeTokenId) {
-		require(msg.sender == borrowable0 || msg.sender == borrowable1, "Impermax: UNAUTHORIZED");
+		require(msg.sender == borrowable0 || msg.sender == borrowable1, "ImpermaxCollateral: UNAUTHORIZED");
 		
 		uint repayToCollateralRatio;
 		{
 			uint priceSqrtX96 = _getPriceSqrtX96();
 			CollateralMath.PositionObject memory positionObject = _getPositionObject(tokenId);
 			
-			int liquidity = positionObject.getAvailableLiquidity(priceSqrtX96);
-			require(liquidity < 0, "ImpermaxCollateral: INSUFFICIENT_SHORTFALL");
+			require(positionObject.isLiquidatable(priceSqrtX96), "ImpermaxCollateral: INSUFFICIENT_SHORTFALL");
+			require(!positionObject.isUnderwater(priceSqrtX96), "ImpermaxCollateral: CANNOT_LIQUIDATE_UNDERWATER_POSITION");
 			
 			uint collateralValue = positionObject.getCollateralValue(priceSqrtX96);
 			uint repayValue = msg.sender == borrowable0

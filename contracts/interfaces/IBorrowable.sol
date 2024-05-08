@@ -61,6 +61,7 @@ interface IBorrowable {
 	function borrowPermit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
 	function borrow(uint256 tokenId, address receiver, uint borrowAmount, bytes calldata data) external;
 	function liquidate(uint256 tokenId, uint repayAmount, address liquidator, bytes calldata data) external returns (uint seizeTokenId);
+	function restructureDebt(uint256 tokenId, uint256 reduceToRatio) external;
 	function trackBorrow(uint256 tokenId) external;
 	
 	/*** Borrowable Interest Rate Model ***/
