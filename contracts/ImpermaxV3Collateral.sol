@@ -33,14 +33,14 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	/*** ERC721 Wrapper ***/
 	
 	function mint(address to, uint256 tokenId) external nonReentrant {
-		require(ownerOf[tokenId] == address(0), "ImpermaxCollateral: NFT_ALREADY_MINTED");
-		require(ITokenizedCLPosition(tokenizedCLPosition).ownerOf(tokenId) == address(this), "ImpermaxCollateral: NFT_NOT_RECEIVED");
+		require(ownerOf[tokenId] == address(0), "ImpermaxV3Collateral: NFT_ALREADY_MINTED");
+		require(ITokenizedCLPosition(tokenizedCLPosition).ownerOf(tokenId) == address(this), "ImpermaxV3Collateral: NFT_NOT_RECEIVED");
 		_mint(to, tokenId);
 		emit Mint(to, tokenId);
 	}
 
 	function redeem(address to, uint256 tokenId, uint256 percentage, bytes memory data) public nonReentrant returns (uint256 newTokenId) {
-		require(percentage <= 1e18, "ImpermaxCollateral: PERCENTAGE_ABOVE_100");
+		require(percentage <= 1e18, "ImpermaxV3Collateral: PERCENTAGE_ABOVE_100");
 		_checkAuthorized(ownerOf[tokenId], msg.sender, tokenId);
 		
 		// optimistically redeem
@@ -79,7 +79,7 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	function canBorrow(uint tokenId, address borrowable, uint accountBorrows) public returns (bool) {
 		address _borrowable0 = borrowable0;
 		address _borrowable1 = borrowable1;
-		require(borrowable == _borrowable0 || borrowable == _borrowable1, "ImpermaxCollateral: INVALID_BORROWABLE");
+		require(borrowable == _borrowable0 || borrowable == _borrowable1, "ImpermaxV3Collateral: INVALID_BORROWABLE");
 		
 		uint priceSqrtX96 = _getPriceSqrtX96();
 		uint debtX = borrowable == _borrowable0 ? accountBorrows : uint(-1);
@@ -93,7 +93,7 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		uint priceSqrtX96 = _getPriceSqrtX96();
 		CollateralMath.PositionObject memory positionObject = _getPositionObject(tokenId);
 		uint postLiquidationCollateralRatio = positionObject.getPostLiquidationCollateralRatio(priceSqrtX96);
-		require(postLiquidationCollateralRatio < 1e18, "ImpermaxCollateral: NOT_UNDERWATER");
+		require(postLiquidationCollateralRatio < 1e18, "ImpermaxV3Collateral: NOT_UNDERWATER");
 		IBorrowable(borrowable0).restructureDebt(tokenId, postLiquidationCollateralRatio);
 		IBorrowable(borrowable1).restructureDebt(tokenId, postLiquidationCollateralRatio);
 		positionObject = _getPositionObject(tokenId);
@@ -104,15 +104,15 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	
 	// this function must be called from borrowable0 or borrowable1
 	function seize(uint tokenId, uint repayAmount, address liquidator, bytes calldata data) external nonReentrant returns (uint seizeTokenId) {
-		require(msg.sender == borrowable0 || msg.sender == borrowable1, "ImpermaxCollateral: UNAUTHORIZED");
+		require(msg.sender == borrowable0 || msg.sender == borrowable1, "ImpermaxV3Collateral: UNAUTHORIZED");
 		
 		uint repayToCollateralRatio;
 		{
 			uint priceSqrtX96 = _getPriceSqrtX96();
 			CollateralMath.PositionObject memory positionObject = _getPositionObject(tokenId);
 			
-			require(positionObject.isLiquidatable(priceSqrtX96), "ImpermaxCollateral: INSUFFICIENT_SHORTFALL");
-			require(!positionObject.isUnderwater(priceSqrtX96), "ImpermaxCollateral: CANNOT_LIQUIDATE_UNDERWATER_POSITION");
+			require(positionObject.isLiquidatable(priceSqrtX96), "ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL");
+			require(!positionObject.isUnderwater(priceSqrtX96), "ImpermaxV3Collateral: CANNOT_LIQUIDATE_UNDERWATER_POSITION");
 			
 			uint collateralValue = positionObject.getCollateralValue(priceSqrtX96);
 			uint repayValue = msg.sender == borrowable0
@@ -120,7 +120,7 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 				: CollateralMath.getValue(priceSqrtX96, 0, repayAmount);
 				
 			repayToCollateralRatio = repayValue.mul(1e18).div(collateralValue);
-			require(repayToCollateralRatio.mul(liquidationPenalty()) <= 1e36, "ImpermaxCollateral: LIQUIDATING_TOO_MUCH");
+			require(repayToCollateralRatio.mul(liquidationPenalty()) <= 1e36, "ImpermaxV3Collateral: LIQUIDATING_TOO_MUCH");
 		}
 		
 		uint seizePercentage = repayToCollateralRatio.mul(liquidationIncentive).div(1e18);

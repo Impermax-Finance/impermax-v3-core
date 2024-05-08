@@ -100,7 +100,7 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 	// this low-level function should be called from another contract
 	function borrow(uint256 tokenId, address receiver, uint borrowAmount, bytes calldata data) external nonReentrant update accrue {
 		uint _totalBalance = totalBalance;
-		require(borrowAmount <= _totalBalance, "ImpermaxBorrowable: INSUFFICIENT_CASH");
+		require(borrowAmount <= _totalBalance, "ImpermaxV3Borrowable: INSUFFICIENT_CASH");
 		
 		address borrower = IERC721(collateral).ownerOf(tokenId);
 		_checkBorrowAllowance(borrower, msg.sender, borrowAmount);
@@ -115,7 +115,7 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 		
 		if(borrowAmount > repayAmount) require(
 			ICollateral(collateral).canBorrow(tokenId, address(this), accountBorrows),
-			"ImpermaxBorrowable: INSUFFICIENT_LIQUIDITY"
+			"ImpermaxV3Borrowable: INSUFFICIENT_LIQUIDITY"
 		);
 		
 		emit Borrow(msg.sender, tokenId, receiver, borrowAmount, repayAmount, accountBorrowsPrior, accountBorrows, _totalBorrows);
@@ -127,7 +127,7 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 		
 		uint balance = IERC20(underlying).balanceOf(address(this));
 		uint actualRepayAmount = Math.min(borrowBalance(tokenId), balance.sub(totalBalance));
-		require(actualRepayAmount >= repayAmount, "ImpermaxBorrowable: INSUFFICIENT_ACTUAL_REPAY");
+		require(actualRepayAmount >= repayAmount, "ImpermaxV3Borrowable: INSUFFICIENT_ACTUAL_REPAY");
 		
 		(uint accountBorrowsPrior, uint accountBorrows, uint _totalBorrows) = _updateBorrow(tokenId, 0, repayAmount);
 		
@@ -136,8 +136,8 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 	
 	// this function must be called from collateral
 	function restructureDebt(uint tokenId, uint reduceToRatio) external nonReentrant update accrue {
-		require(msg.sender == collateral, "ImpermaxBorrowable: UNAUTHORIZED");
-		require(reduceToRatio < 1e18, "ImpermaxBorrowable: NOT_UNDERWATER");
+		require(msg.sender == collateral, "ImpermaxV3Borrowable: UNAUTHORIZED");
+		require(reduceToRatio < 1e18, "ImpermaxV3Borrowable: NOT_UNDERWATER");
 	
 		uint currentBorrowBalance = borrowBalance(tokenId);
 		uint repayAmount = currentBorrowBalance.sub(currentBorrowBalance.mul(reduceToRatio).div(1e18));
