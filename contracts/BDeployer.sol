@@ -1,6 +1,6 @@
 pragma solidity =0.5.16;
 
-import "./Borrowable.sol";
+import "./ImpermaxV3Borrowable.sol";
 import "./interfaces/IBDeployer.sol";
 
 /*
