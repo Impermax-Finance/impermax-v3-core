@@ -42,18 +42,22 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	function redeem(address to, uint256 tokenId, uint256 percentage, bytes memory data) public nonReentrant returns (uint256 newTokenId) {
 		require(percentage <= 1e18, "ImpermaxV3Collateral: PERCENTAGE_ABOVE_100");
 		_checkAuthorized(ownerOf[tokenId], msg.sender, tokenId);
-		
+				
 		// optimistically redeem
 		if (percentage == 1e18) {
 			_burn(tokenId);
-			ITokenizedCLPosition(tokenizedCLPosition).safeTransferFrom(address(this), to, tokenId, data);
+			ITokenizedCLPosition(underlying).safeTransferFrom(address(this), to, tokenId, data);
+			
+			// finally check that the position is not left underwater
+			require(IBorrowable(borrowable0).borrowBalance(tokenId) == 0, "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
+			require(IBorrowable(borrowable1).borrowBalance(tokenId) == 0, "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
 		} else {
-			newTokenId = ITokenizedCLPosition(tokenizedCLPosition).split(tokenId, percentage);
-			ITokenizedCLPosition(tokenizedCLPosition).safeTransferFrom(address(this), to, newTokenId, data);
+			newTokenId = ITokenizedCLPosition(underlying).split(tokenId, percentage);
+			ITokenizedCLPosition(underlying).safeTransferFrom(address(this), to, newTokenId, data);
+			
+			// finally check that the position is not left underwater
+			require(!isLiquidatable(tokenId), "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
 		}
-		
-		// finally check that the position is not left underwater
-		require(!isLiquidatable(tokenId));
 		
 		emit Redeem(to, tokenId, percentage, newTokenId);
 	}
@@ -97,9 +101,9 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		IBorrowable(borrowable0).restructureDebt(tokenId, postLiquidationCollateralRatio);
 		IBorrowable(borrowable1).restructureDebt(tokenId, postLiquidationCollateralRatio);
 		positionObject = _getPositionObject(tokenId);
-		require(!positionObject.isUnderwater(priceSqrtX96), "this should never happen");
+		assert(!positionObject.isUnderwater(priceSqrtX96));
 		
-		// TODO emit events
+		emit RestructureBadDebt(tokenId, postLiquidationCollateralRatio);
 	}
 	
 	// this function must be called from borrowable0 or borrowable1
@@ -118,17 +122,15 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 			uint repayValue = msg.sender == borrowable0
 				? CollateralMath.getValue(priceSqrtX96, repayAmount, 0)
 				: CollateralMath.getValue(priceSqrtX96, 0, repayAmount);
-				
+			
 			repayToCollateralRatio = repayValue.mul(1e18).div(collateralValue);
-			require(repayToCollateralRatio.mul(liquidationPenalty()) <= 1e36, "ImpermaxV3Collateral: LIQUIDATING_TOO_MUCH");
+			require(repayToCollateralRatio.mul(liquidationPenalty()) <= 1e36, "ImpermaxV3Collateral: UNEXPECTED_RATIO");
 		}
 		
 		uint seizePercentage = repayToCollateralRatio.mul(liquidationIncentive).div(1e18);
-		uint feePercentage = liquidationFee.mul(1e18).div(uint(1e18).sub(seizePercentage));	
+		uint feePercentage = repayToCollateralRatio.mul(liquidationFee).div(uint(1e18).sub(seizePercentage));	
 		
-		seizeTokenId = ITokenizedCLPosition(tokenizedCLPosition).split(tokenId, seizePercentage);
-		ITokenizedCLPosition(tokenizedCLPosition).safeTransferFrom(address(this), liquidator, seizeTokenId, data);
-		emit Seize(liquidator, tokenId, seizePercentage, seizeTokenId);
+		seizeTokenId = ITokenizedCLPosition(underlying).split(tokenId, seizePercentage);
 		
 		if (feePercentage > 0) {
 			uint feeTokenId = ITokenizedCLPosition(underlying).split(tokenId, feePercentage);		
@@ -136,5 +138,8 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 			_mint(reservesManager, feeTokenId);
 			emit Seize(reservesManager, tokenId, feePercentage, feeTokenId);
 		}
+		
+		ITokenizedCLPosition(underlying).safeTransferFrom(address(this), liquidator, seizeTokenId, data);
+		emit Seize(liquidator, tokenId, seizePercentage, seizeTokenId);
 	}
 }
