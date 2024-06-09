@@ -28,7 +28,7 @@ interface ICollateral {
 	event Redeem(address indexed to, uint tokenId, uint percentage, uint newTokenId);
 	event Seize(address indexed to, uint tokenId, uint percentage, uint newTokenId);
 	
-	function tokenizedCLPosition() external view returns (address);
+	function underlying() external view returns (address);
 	function factory() external view returns (address);
 	function borrowable0() external view returns (address);
 	function borrowable1() external view returns (address);

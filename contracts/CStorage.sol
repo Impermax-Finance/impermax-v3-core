@@ -1,7 +1,7 @@
 pragma solidity =0.5.16;
 
 contract CStorage {
-	address public tokenizedCLPosition;
+	address public underlying;
 	address public factory;
 	address public borrowable0;
 	address public borrowable1;

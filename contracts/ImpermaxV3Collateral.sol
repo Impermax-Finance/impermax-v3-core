@@ -15,14 +15,14 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	/*** Collateralization Model ***/
 	
 	function _getPriceSqrtX96() internal returns (uint) {
-		return ITokenizedCLPosition(tokenizedCLPosition).oraclePriceSqrtX96();
+		return ITokenizedCLPosition(underlying).oraclePriceSqrtX96();
 	}
 	
 	function _getPositionObjectAmounts(uint tokenId, uint debtX, uint debtY) internal view returns (CollateralMath.PositionObject memory positionObject) {
 		if (debtX == uint(-1)) debtX = IBorrowable(borrowable0).borrowBalance(tokenId);
 		if (debtY == uint(-1)) debtY = IBorrowable(borrowable1).borrowBalance(tokenId);
 		(uint128 liquidity, uint160 paSqrtX96, uint160 pbSqrtX96) = 
-			ITokenizedCLPosition(tokenizedCLPosition).position(tokenId);
+			ITokenizedCLPosition(underlying).position(tokenId);
 		positionObject = CollateralMath.newPosition(liquidity, paSqrtX96, pbSqrtX96, debtX, debtY, liquidationPenalty(), safetyMarginSqrt);
 	}
 	
@@ -34,7 +34,7 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	
 	function mint(address to, uint256 tokenId) external nonReentrant {
 		require(ownerOf[tokenId] == address(0), "ImpermaxV3Collateral: NFT_ALREADY_MINTED");
-		require(ITokenizedCLPosition(tokenizedCLPosition).ownerOf(tokenId) == address(this), "ImpermaxV3Collateral: NFT_NOT_RECEIVED");
+		require(ITokenizedCLPosition(underlying).ownerOf(tokenId) == address(this), "ImpermaxV3Collateral: NFT_NOT_RECEIVED");
 		_mint(to, tokenId);
 		emit Mint(to, tokenId);
 	}
@@ -131,7 +131,7 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		emit Seize(liquidator, tokenId, seizePercentage, seizeTokenId);
 		
 		if (feePercentage > 0) {
-			uint feeTokenId = ITokenizedCLPosition(tokenizedCLPosition).split(tokenId, feePercentage);		
+			uint feeTokenId = ITokenizedCLPosition(underlying).split(tokenId, feePercentage);		
 			address reservesManager = IFactory(factory).reservesManager();
 			_mint(reservesManager, feeTokenId);
 			emit Seize(reservesManager, tokenId, feePercentage, feeTokenId);

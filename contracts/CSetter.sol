@@ -25,13 +25,13 @@ contract CSetter is ImpermaxERC721, CStorage {
 	function _initialize (
 		string calldata _name,
 		string calldata _symbol,
-		address _tokenizedCLPosition, 
+		address _underlying, 
 		address _borrowable0, 
 		address _borrowable1
 	) external {
 		require(msg.sender == factory, "ImpermaxV3Collateral: UNAUTHORIZED"); // sufficient check
 		_setName(_name, _symbol);
-		tokenizedCLPosition = _tokenizedCLPosition;
+		underlying = _underlying;
 		borrowable0 = _borrowable0;
 		borrowable1 = _borrowable1;
 	}
