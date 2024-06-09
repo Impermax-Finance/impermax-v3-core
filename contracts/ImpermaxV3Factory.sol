@@ -30,14 +30,6 @@ contract ImpermaxV3Factory is IFactory {
 	IBDeployer public bDeployer;
 	ICDeployer public cDeployer;
 	
-	event LendingPoolInitialized(address indexed tokenizedCLPosition, address indexed token0, address indexed token1,
-		address collateral, address borrowable0, address borrowable1, uint lendingPoolId);
-	event NewPendingAdmin(address oldPendingAdmin, address newPendingAdmin);
-	event NewAdmin(address oldAdmin, address newAdmin);
-	event NewReservesPendingAdmin(address oldReservesPendingAdmin, address newReservesPendingAdmin);
-	event NewReservesAdmin(address oldReservesAdmin, address newReservesAdmin);
-	event NewReservesManager(address oldReservesManager, address newReservesManager);
-	
 	constructor(address _admin, address _reservesAdmin, IBDeployer _bDeployer, ICDeployer _cDeployer) public {
 		admin = _admin;
 		reservesAdmin = _reservesAdmin;
