@@ -27,6 +27,7 @@ interface ICollateral {
 	event Mint(address indexed to, uint tokenId);
 	event Redeem(address indexed to, uint tokenId, uint percentage, uint newTokenId);
 	event Seize(address indexed to, uint tokenId, uint percentage, uint newTokenId);
+	event RestructureBadDebt(uint tokenId, uint postLiquidationCollateralRatio);
 	
 	function underlying() external view returns (address);
 	function factory() external view returns (address);
@@ -41,7 +42,9 @@ interface ICollateral {
 	function redeem(address to, uint256 tokenId, uint256 percentage, bytes calldata data) external returns (uint newTokenId);
 	function redeem(address to, uint256 tokenId, uint256 percentage) external returns (uint newTokenId);
 	function isLiquidatable(uint tokenId) external returns (bool);
+	function isUnderwater(uint tokenId) external returns (bool);
 	function canBorrow(uint tokenId, address borrowable, uint accountBorrows) external returns (bool);
+	function restructureBadDebt(uint tokenId) external;
 	function seize(uint tokenId, uint repayAmount, address liquidator, bytes calldata data) external returns (uint seizeTokenId);
 	
 	/* CSetter */
