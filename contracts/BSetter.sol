@@ -24,7 +24,7 @@ contract BSetter is PoolToken, BStorage {
 		address _underlying, 
 		address _collateral
 	) external {
-		require(msg.sender == factory, "Impermax: UNAUTHORIZED"); // sufficient check
+		require(msg.sender == factory, "ImpermaxV3Borrowable: UNAUTHORIZED"); // sufficient check
 		_setName(_name, _symbol);
 		underlying = _underlying;
 		collateral = _collateral;
@@ -57,11 +57,11 @@ contract BSetter is PoolToken, BStorage {
 	
 	function _checkSetting(uint parameter, uint min, uint max) internal view {
 		_checkAdmin();
-		require(parameter >= min, "Impermax: INVALID_SETTING");
-		require(parameter <= max, "Impermax: INVALID_SETTING");
+		require(parameter >= min, "ImpermaxV3Borrowable: INVALID_SETTING");
+		require(parameter <= max, "ImpermaxV3Borrowable: INVALID_SETTING");
 	}
 	
 	function _checkAdmin() internal view {
-		require(msg.sender == IFactory(factory).admin(), "Impermax: UNAUTHORIZED");
+		require(msg.sender == IFactory(factory).admin(), "ImpermaxV3Borrowable: UNAUTHORIZED");
 	}
 }

@@ -20,7 +20,7 @@ contract BAllowance is PoolToken, BStorage {
 	function _checkBorrowAllowance(address owner, address spender, uint256 value) internal {
 		uint _borrowAllowance = borrowAllowance[owner][spender];
 		if (spender != owner && _borrowAllowance != uint256(-1)) {
-			require(_borrowAllowance >= value, "Impermax: BORROW_NOT_ALLOWED");
+			require(_borrowAllowance >= value, "ImpermaxV3Borrowable: BORROW_NOT_ALLOWED");
 			borrowAllowance[owner][spender] = _borrowAllowance - value;
 		}	
 	}

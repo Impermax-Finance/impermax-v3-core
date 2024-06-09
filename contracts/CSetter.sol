@@ -18,7 +18,7 @@ contract CSetter is ImpermaxERC721, CStorage {
 
 	// called once by the factory
 	function _setFactory() external {
-		require(factory == address(0), "Impermax: FACTORY_ALREADY_SET");
+		require(factory == address(0), "ImpermaxV3Collateral: FACTORY_ALREADY_SET");
 		factory = msg.sender;
 	}
 	
@@ -29,7 +29,7 @@ contract CSetter is ImpermaxERC721, CStorage {
 		address _borrowable0, 
 		address _borrowable1
 	) external {
-		require(msg.sender == factory, "Impermax: UNAUTHORIZED"); // sufficient check
+		require(msg.sender == factory, "ImpermaxV3Collateral: UNAUTHORIZED"); // sufficient check
 		_setName(_name, _symbol);
 		tokenizedCLPosition = _tokenizedCLPosition;
 		borrowable0 = _borrowable0;
@@ -56,12 +56,12 @@ contract CSetter is ImpermaxERC721, CStorage {
 	
 	function _checkSetting(uint parameter, uint min, uint max) internal view {
 		_checkAdmin();
-		require(parameter >= min, "Impermax: INVALID_SETTING");
-		require(parameter <= max, "Impermax: INVALID_SETTING");
+		require(parameter >= min, "ImpermaxV3Collateral: INVALID_SETTING");
+		require(parameter <= max, "ImpermaxV3Collateral: INVALID_SETTING");
 	}
 	
 	function _checkAdmin() internal view {
-		require(msg.sender == IFactory(factory).admin(), "Impermax: UNAUTHORIZED");
+		require(msg.sender == IFactory(factory).admin(), "ImpermaxV3Collateral: UNAUTHORIZED");
 	}
 	
 	/*** Utilities ***/
@@ -69,7 +69,7 @@ contract CSetter is ImpermaxERC721, CStorage {
 	// prevents a contract from calling itself, directly or indirectly.
 	bool internal _notEntered = true;
 	modifier nonReentrant() {
-		require(_notEntered, "Impermax: REENTERED");
+		require(_notEntered, "ImpermaxV3Collateral: REENTERED");
 		_notEntered = false;
 		_;
 		_notEntered = true;
