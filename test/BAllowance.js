@@ -72,9 +72,9 @@ contract('BAllowance', function (accounts) {
 
 	it('checkBorrowAllowance fail', async () => {
 		expectEqual(await token.borrowAllowance(user, other), 0);
-		await expectRevert(token.checkBorrowAllowance(user, other, TEST_AMOUNT), "Impermax: BORROW_NOT_ALLOWED");
+		await expectRevert(token.checkBorrowAllowance(user, other, TEST_AMOUNT), "ImpermaxV3Borrowable: BORROW_NOT_ALLOWED");
 		await token.borrowApprove(other, TEST_AMOUNT, {from: user});
-		await expectRevert(token.checkBorrowAllowance(user, other, TEST_AMOUNT.add(new BN(1))), "Impermax: BORROW_NOT_ALLOWED");
+		await expectRevert(token.checkBorrowAllowance(user, other, TEST_AMOUNT.add(new BN(1))), "ImpermaxV3Borrowable: BORROW_NOT_ALLOWED");
 		await token.checkBorrowAllowance(user, other, TEST_AMOUNT);
 	});
 	

@@ -49,7 +49,7 @@ contract('BSetter', function (accounts) {
 		const lendingPool = await makeLendingPool({admin});
 		factory = lendingPool.factory;
 		borrowable = lendingPool.borrowable0;
-		underlying = lendingPool.uniswapV2Pair.obj.token0;
+		underlying = lendingPool.tokenizedCLPosition.obj.token0;
 	});
 	
 	it('initialization check', async () => {
@@ -69,10 +69,10 @@ contract('BSetter', function (accounts) {
 		await borrowable._setKinkUtilizationRate(KINK_UR_TEST, {from: admin});
 		await borrowable._setAdjustSpeed(ADJUST_SPEED_TEST, {from: admin});
 		await borrowable._setBorrowTracker(BORROW_TRACKER_TEST, {from: admin});
-		await expectRevert(borrowable._setReserveFactor(RESERVE_FACTOR_TEST, {from: user}), 'Impermax: UNAUTHORIZED');
-		await expectRevert(borrowable._setKinkUtilizationRate(KINK_UR_TEST, {from: user}), 'Impermax: UNAUTHORIZED');
-		await expectRevert(borrowable._setAdjustSpeed(ADJUST_SPEED_TEST, {from: user}), 'Impermax: UNAUTHORIZED');
-		await expectRevert(borrowable._setBorrowTracker(BORROW_TRACKER_TEST, {from: user}), 'Impermax: UNAUTHORIZED');
+		await expectRevert(borrowable._setReserveFactor(RESERVE_FACTOR_TEST, {from: user}), 'ImpermaxV3Borrowable: UNAUTHORIZED');
+		await expectRevert(borrowable._setKinkUtilizationRate(KINK_UR_TEST, {from: user}), 'ImpermaxV3Borrowable: UNAUTHORIZED');
+		await expectRevert(borrowable._setAdjustSpeed(ADJUST_SPEED_TEST, {from: user}), 'ImpermaxV3Borrowable: UNAUTHORIZED');
+		await expectRevert(borrowable._setBorrowTracker(BORROW_TRACKER_TEST, {from: user}), 'ImpermaxV3Borrowable: UNAUTHORIZED');
 	});
 
 	it('set reserve factory', async () => {
@@ -107,7 +107,7 @@ contract('BSetter', function (accounts) {
 		expectAlmostEqualMantissa(await borrowable.reserveFactor(), succeedMin);
 		await borrowable._setReserveFactor(succeedMax, {from: admin});
 		expectAlmostEqualMantissa(await borrowable.reserveFactor(), succeedMax);
-		await expectRevert(borrowable._setReserveFactor(failMax, {from: admin}), 'Impermax: INVALID_SETTING');
+		await expectRevert(borrowable._setReserveFactor(failMax, {from: admin}), 'ImpermaxV3Borrowable: INVALID_SETTING');
 	});
 
 	it('kink utilization rate boundaries', async () => {
@@ -115,12 +115,12 @@ contract('BSetter', function (accounts) {
 		const succeedMin = slightlyIncrease(KINK_UR_MIN);
 		const succeedMax = slightlyDecrease(KINK_UR_MAX);
 		const failMax = slightlyIncrease(KINK_UR_MAX);
-		await expectRevert(borrowable._setKinkUtilizationRate(failMin, {from: admin}), 'Impermax: INVALID_SETTING');
+		await expectRevert(borrowable._setKinkUtilizationRate(failMin, {from: admin}), 'ImpermaxV3Borrowable: INVALID_SETTING');
 		await borrowable._setKinkUtilizationRate(succeedMin, {from: admin});
 		expectAlmostEqualMantissa(await borrowable.kinkUtilizationRate(), succeedMin);
 		await borrowable._setKinkUtilizationRate(succeedMax, {from: admin});
 		expectAlmostEqualMantissa(await borrowable.kinkUtilizationRate(), succeedMax);
-		await expectRevert(borrowable._setKinkUtilizationRate(failMax, {from: admin}), 'Impermax: INVALID_SETTING');
+		await expectRevert(borrowable._setKinkUtilizationRate(failMax, {from: admin}), 'ImpermaxV3Borrowable: INVALID_SETTING');
 	});
 
 	it('adjust speed boundaries', async () => {
@@ -128,11 +128,11 @@ contract('BSetter', function (accounts) {
 		const succeedMin = slightlyIncrease(ADJUST_SPEED_MIN);
 		const succeedMax = slightlyDecrease(ADJUST_SPEED_MAX);
 		const failMax = slightlyIncrease(ADJUST_SPEED_MAX);
-		await expectRevert(borrowable._setAdjustSpeed(failMin, {from: admin}), 'Impermax: INVALID_SETTING');
+		await expectRevert(borrowable._setAdjustSpeed(failMin, {from: admin}), 'ImpermaxV3Borrowable: INVALID_SETTING');
 		await borrowable._setAdjustSpeed(succeedMin, {from: admin});
 		expectAlmostEqualMantissa(await borrowable.adjustSpeed(), succeedMin);
 		await borrowable._setAdjustSpeed(succeedMax, {from: admin});
 		expectAlmostEqualMantissa(await borrowable.adjustSpeed(), succeedMax);
-		await expectRevert(borrowable._setAdjustSpeed(failMax, {from: admin}), 'Impermax: INVALID_SETTING');
+		await expectRevert(borrowable._setAdjustSpeed(failMax, {from: admin}), 'ImpermaxV3Borrowable: INVALID_SETTING');
 	});
 });

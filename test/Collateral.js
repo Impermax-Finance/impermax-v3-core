@@ -5,7 +5,7 @@ const {
 	ReentrantCallee,
 	Recipient,
 	makeFactory,
-	makeUniswapV2Pair,
+	makeTokenizedCLPosition,
 } = require('./Utils/Impermax');
 const {
 	expectAlmostEqualMantissa,
@@ -23,454 +23,486 @@ const {
 const { keccak256, toUtf8Bytes } = require('ethers/utils');
 
 const oneMantissa = (new BN(10)).pow(new BN(18));
+const _2_96 = (new BN(2)).pow(new BN(96));
+const ZERO = new BN(0);
 
+const TOKEN_ID = new BN(1000);
 const TEST_AMOUNT = oneMantissa.mul(new BN(200));
 const MAX_UINT_256 = (new BN(2)).pow(new BN(256)).sub(new BN(1));
 
 function slightlyIncrease(bn) {
-	return bn.mul( bnMantissa(1.00001) ).div( oneMantissa );
+	return bn.mul( bnMantissa(1.10001) ).div( oneMantissa );
 }
 function slightlyDecrease(bn) {
-	return bn.mul( oneMantissa ).div( bnMantissa(1.00001) );
+	return bn.mul( oneMantissa ).div( bnMantissa(1.10001) );
+}
+
+function X96(n) {
+	return _2_96.mul(bnMantissa(n)).div(oneMantissa);
+}
+function sqrtX96(n) {
+	return X96(Math.sqrt(n));
+}
+
+function getVirtualX(liquidity, price) {
+	return liquidity / Math.sqrt(price);
+}
+function getVirtualY(liquidity, price) {
+	return liquidity * Math.sqrt(price);
+}
+
+function getRealXAndY(params) {
+	const {liquidity, price, priceA, priceB} = params;
+	if (priceA > price) {
+		return [getVirtualX(liquidity, priceA) - getVirtualX(liquidity, priceB), 0];
+	}
+	if (priceB < price) {
+		return [0, getVirtualY(liquidity, priceB) - getVirtualY(liquidity, priceA)];
+	}
+	return [
+		getVirtualX(liquidity, price) - getVirtualX(liquidity, priceB),
+		getVirtualY(liquidity, price) - getVirtualY(liquidity, priceA)
+	]
+}
+
+function getLiquidityPostLiquidationAsY(params) {
+	const {liquidationIncentive, liquidationFee, price, borrowAmountA, borrowAmountB} = params;
+	const liquidationPenalty = liquidationIncentive + liquidationFee;
+	const [realX, realY] = getRealXAndY(params);
+	const collateralValueAsY = realX * price + realY;
+	const debtValueAsY = borrowAmountA * price + borrowAmountB;
+	const collateralNeededAsY = debtValueAsY * liquidationPenalty;
+	return collateralValueAsY - collateralNeededAsY;
+}
+
+function getAvailableLiquidityAsY(params) {
+	const {safetyMargin, liquidity, price, priceA, priceB, borrowAmountA, borrowAmountB} = params;
+	const params2 = {...params};
+	const prices = [price / safetyMargin, price * safetyMargin];
+	let availableLiquidityAsY = 1e36;
+	for (let price of prices) {
+		params2.price = price;
+		const tmp = getLiquidityPostLiquidationAsY(params2);
+		availableLiquidityAsY = tmp < availableLiquidityAsY ? tmp : availableLiquidityAsY;
+	}
+	return availableLiquidityAsY;
+}
+
+function getMaxBorrowableXAndY(params) {
+	const {liquidationIncentive, liquidationFee, safetyMargin, liquidity, price, priceA, priceB, borrowAmountA, borrowAmountB} = params;
+	const liquidationPenalty = liquidationIncentive + liquidationFee;
+	const params2 = {...params};
+	const prices = [price / safetyMargin, price * safetyMargin];
+	let maxBorrowables = [1e36, 1e36];
+	for (let price of prices) {
+		params2.price = price;
+		const availableDebtValueAsY = getLiquidityPostLiquidationAsY(params2) / liquidationPenalty;
+		const maxBorrowable0 = borrowAmountA + availableDebtValueAsY / price;
+		const maxBorrowable1 = borrowAmountB + availableDebtValueAsY;
+		maxBorrowables[0] = maxBorrowable0 < maxBorrowables[0] ? maxBorrowable0 : maxBorrowables[0];
+		maxBorrowables[1] = maxBorrowable1 < maxBorrowables[1] ? maxBorrowable1 : maxBorrowables[1];
+	}
+	return maxBorrowables;
 }
 
 contract('Collateral', function (accounts) {
 	let root = accounts[0];
 	let user = accounts[1];
-	let admin = accounts[2];		
-	let borrower = accounts[3];		
-	let liquidator = accounts[4];		
-	let reservesAdmin = accounts[5];		
-	let reservesManager = accounts[6];		
+	let admin = accounts[2];
+	let borrower = accounts[3];
+	let liquidator = accounts[4];
+	let reservesAdmin = accounts[5];
+	let reservesManager = accounts[6];
 	let factory;
 		
 	before(async () => {
 		factory = await makeFactory({admin, reservesAdmin});
 		await factory._setReservesManager(reservesManager, {from: reservesAdmin});
 	});
-
-	describe('getPrices', () => {
-		let collateral;
-		let underlying;
-		
-		before(async () => {
-			collateral = await Collateral.new();
-			underlying = await makeUniswapV2Pair();
-			await collateral.setPriceOracle(factory.obj.simpleUniswapOracle.address);
-			await collateral.setUnderlyingHarness(underlying.address);
-		});
-		
-		[
-			{priceOracle: 4.67, priceNow: 4.67, totalSupply: 1000, currentReserve0: 2000},
-			{priceOracle: 0.03489, priceNow: 0.03965, totalSupply: 1000, currentReserve0: 2000},
-			{priceOracle: 2384574567, priceNow: 4584574567, totalSupply: 1000000, currentReserve0: 2},
-			{priceOracle: 0.0000004834, priceNow: 0.0000002134, totalSupply: 10000, currentReserve0: 3489465},
-		].forEach((testCase) => {
-			it(`getPrices for ${JSON.stringify(testCase)}`, async () => {
-				const {priceOracle, priceNow, totalSupply, currentReserve0} = testCase;
-				const currentReserve1 = currentReserve0 * priceNow;
-				const adjustement = Math.sqrt(priceOracle/priceNow);
-				const adjustedReserve0 = currentReserve0 / adjustement;
-				const adjustedReserve1 = currentReserve1 * adjustement;
-				expectAlmostEqualMantissa(bnMantissa(adjustedReserve1 / adjustedReserve0), bnMantissa(priceOracle));
-				
-				await factory.obj.simpleUniswapOracle.setPrice(underlying.address, uq112(priceOracle));
-				await underlying.setTotalSupply(bnMantissa(totalSupply));
-				await underlying.setReserves(bnMantissa(currentReserve0), bnMantissa(currentReserve1));
-				const {price0, price1} = await collateral.getPrices.call();
-				expectAlmostEqualMantissa(price0.mul(oneMantissa).div(price1), bnMantissa(priceOracle));
-				expectAlmostEqualMantissa(price0, bnMantissa(totalSupply / adjustedReserve0 / 2));
-				expectAlmostEqualMantissa(price1, bnMantissa(totalSupply / adjustedReserve1 / 2));				
-			});
-		});
-		
-		it(`fail if price(0|1) <= 100`, async () => {
-			priceUQ112 = "1038000000000000000000000000000000000000000000000000000000000000000"; //2e32
-			reserve0 = "1";
-			reserve1 = "200000000000000000000000000000000";
-			totalSupply = "14142000000000000";
-			await factory.obj.simpleUniswapOracle.setPrice(underlying.address, priceUQ112);
-			await underlying.setTotalSupply(totalSupply);
-			await underlying.setReserves(reserve0, reserve1);
-			await expectRevert(collateral.getPrices(), 'Impermax: PRICE_CALCULATION_ERROR');
-			
-			priceUQ112 = "26"; //0.5e-32
-			reserve0 = "200000000000000000000000000000000";
-			reserve1 = "1";
-			totalSupply = "14142000000000000";
-			await factory.obj.simpleUniswapOracle.setPrice(underlying.address, priceUQ112);
-			await underlying.setTotalSupply(totalSupply);
-			await underlying.setReserves(reserve0, reserve1);
-			await expectRevert(collateral.getPrices(), 'Impermax: PRICE_CALCULATION_ERROR');
-			
-			priceUQ112 = uq112(1); //1
-			reserve0 = "14142000000000000";
-			reserve1 = "14142000000000000";
-			totalSupply = "1";
-			await factory.obj.simpleUniswapOracle.setPrice(underlying.address, priceUQ112);
-			await underlying.setTotalSupply(totalSupply);
-			await underlying.setReserves(reserve0, reserve1);
-			await expectRevert(collateral.getPrices(), 'Impermax: PRICE_CALCULATION_ERROR');			
-		});
-	});
 	
 	[
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, amounts: [280, 100, 100], prices: [1, 1]},
-		{safetyMargin: 2.25, liquidationIncentive: 1.02, liquidationFee: 0.07, amounts: [3060, 0, 2000], prices: [1, 1]},
-		{safetyMargin: 2.00, liquidationIncentive: 1.03, liquidationFee: 0.00, amounts: [1000, 111, 1.546], prices: [11.3, 0.56]},
-		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.03, amounts: [11.3, 175.6, 200], prices: [0.0059, 0.034]},
-		{safetyMargin: 1.50, liquidationIncentive: 1.05, liquidationFee: 0.02, amounts: [2154546, 1, 1.12e12], prices: [1154546, 0.0000008661]},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 20},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 0.4, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 0.16, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 2, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 4, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 10, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 40},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 40, borrowAmountB: 30},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 60, borrowAmountB: 40},
+		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.02, liquidity: 3000, price: 3334, priceA: 3000, priceB: 3500, borrowAmountA: 1.5, borrowAmountB: 2975.79},
+		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.02, liquidity: 200, price: 3334, priceA: 1000, priceB: 6000, borrowAmountA: 0.5, borrowAmountB: 2975.79},
+		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.02, liquidity: 10000, price: 3334, priceA: 3200, priceB: 3400, borrowAmountA: 0, borrowAmountB: 4100},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 20, price: 0.168, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 30, price: 0.168, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 40, price: 0.11, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 40, price: 0.18, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 40, price: 0.3, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 40, price: 0.05, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
 	].forEach((testCase) => {
 		describe(`Collateral tests for ${JSON.stringify(testCase)}`, () => {
+			let tokenizedCLPosition;
 			let collateral;
 			let borrowable0;
 			let borrowable1;
-			const exchangeRate = 2;
 			
-			const {safetyMargin, liquidationIncentive, liquidationFee, amounts, prices} = testCase;
-			const collateralValue = amounts[0];
+			const {safetyMargin, liquidationIncentive, liquidationFee, liquidity, price, priceA, priceB, borrowAmountA, borrowAmountB} = testCase;
 			const liquidationPenalty = liquidationIncentive + liquidationFee;
+					
+			const virtualX = getVirtualX(liquidity, price);
+			const virtualY = getVirtualY(liquidity, price);
+			const [realX, realY] = getRealXAndY(testCase);
 			
-			//Case A: price0 / price1 increase by safetyMargin
-			const price0FinalA = prices[0] * Math.sqrt(safetyMargin);
-			const price1FinalA = prices[1] / Math.sqrt(safetyMargin);
-			const collateralNeededA = (price0FinalA * amounts[1] + price1FinalA * amounts[2]) * liquidationPenalty;
-			const maxBorrowable0A = (collateralValue / liquidationPenalty - price1FinalA * amounts[2]) / price0FinalA;
-			const maxBorrowable1A = (collateralValue / liquidationPenalty - price0FinalA * amounts[1]) / price1FinalA;
-			
-			//Case B: price0 / price1 decrease by safetyMargin
-			const price0FinalB = prices[0] / Math.sqrt(safetyMargin);
-			const price1FinalB = prices[1] * Math.sqrt(safetyMargin);
-			const collateralNeededB = (price0FinalB * amounts[1] + price1FinalB * amounts[2]) * liquidationPenalty;
-			const maxBorrowable0B = (collateralValue / liquidationPenalty - price1FinalB * amounts[2]) / price0FinalB;
-			const maxBorrowable1B = (collateralValue / liquidationPenalty - price0FinalB * amounts[1]) / price1FinalB;
-			
-			//Calculate liquidity offchain
-			const collateralNeeded = (collateralNeededA > collateralNeededB) ? collateralNeededA : collateralNeededB;
-			const maxBorrowable0 = (maxBorrowable0A < maxBorrowable0B) ? maxBorrowable0A : maxBorrowable0B;
-			const maxBorrowable1 = (maxBorrowable1A < maxBorrowable1B) ? maxBorrowable1A : maxBorrowable1B;
-			const collateralBalance = collateralValue - collateralNeeded;
-			const expectedLiquidity = (collateralBalance > 0) ? collateralBalance : 0;
-			const expectedShortfall = (collateralBalance < 0) ? -collateralBalance : 0;
+			const concentrationFactor = 1 / (1 - 1 / Math.sqrt(Math.sqrt(priceB / priceA)));
 			
 			before(async () => {
+				tokenizedCLPosition = await makeTokenizedCLPosition();
 				collateral = await Collateral.new();
 				borrowable0 = await Borrowable.new();
 				borrowable1 = await Borrowable.new();
+				await borrowable0.setCollateralHarness(collateral.address);
+				await borrowable1.setCollateralHarness(collateral.address);
 				await collateral.setFactoryHarness(factory.address);				
-				await collateral.setExchangeRateHarness(bnMantissa(exchangeRate));				
 				await collateral.setBorrowable0Harness(borrowable0.address);				
 				await collateral.setBorrowable1Harness(borrowable1.address);
+				await collateral.setUnderlyingHarness(tokenizedCLPosition.address);
 				
 				await collateral._setSafetyMarginSqrt(bnMantissa(Math.sqrt(safetyMargin)), {from: admin});
 				await collateral._setLiquidationIncentive(bnMantissa(liquidationIncentive), {from: admin});
-				await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});
-				await collateral.setPricesHarness(bnMantissa(prices[0]), bnMantissa(prices[1]));
+				await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});				
+				await tokenizedCLPosition.oraclePriceSqrtX96Harness(sqrtX96(price));
 			});
 			
 			beforeEach(async () => {
-				const tokenBalance = collateralValue / exchangeRate;
-				await collateral.setBalanceHarness(user, bnMantissa(tokenBalance));
-				await borrowable0.setBorrowBalanceHarness(user, bnMantissa(amounts[1]));
-				await borrowable1.setBorrowBalanceHarness(user, bnMantissa(amounts[2]));
+				await tokenizedCLPosition.setPositionHarness(TOKEN_ID, bnMantissa(liquidity), sqrtX96(priceA), sqrtX96(priceB));
+				await tokenizedCLPosition.setOwnerHarness(collateral.address, TOKEN_ID);
+				await collateral.setOwnerHarness(borrower, TOKEN_ID);
+				await borrowable0.setBorrowBalanceHarness(TOKEN_ID, bnMantissa(borrowAmountA));
+				await borrowable1.setBorrowBalanceHarness(TOKEN_ID, bnMantissa(borrowAmountB));
+			});
+			
+			// test CLmath qua o in file a parte?
+
+			it(`getPositionObject`, async () => {
+				const positionObject = await collateral.getPositionObject(TOKEN_ID);
+				expectAlmostEqualMantissa(positionObject.liquidity, bnMantissa(liquidity));
+				expectAlmostEqualMantissa(positionObject.paSqrtX96, sqrtX96(priceA));
+				expectAlmostEqualMantissa(positionObject.pbSqrtX96, sqrtX96(priceB));
+				expectAlmostEqualMantissa(positionObject.debtX, bnMantissa(borrowAmountA));
+				expectAlmostEqualMantissa(positionObject.debtY, bnMantissa(borrowAmountB));
+				expectAlmostEqualMantissa(positionObject.liquidationPenalty, bnMantissa(liquidationPenalty));
+				expectAlmostEqualMantissa(positionObject.safetyMarginSqrt, bnMantissa(Math.sqrt(safetyMargin)));
 			});
 
-			it(`calculateLiquidity`, async () => {
-				const {liquidity, shortfall} = await collateral.calculateLiquidity.call(
-					bnMantissa(amounts[0]), bnMantissa(amounts[1]), bnMantissa(amounts[2])
+			it(`getVirtualX`, async () => {
+				expectAlmostEqualMantissa(bnMantissa(virtualX), await collateral.getVirtualX.call(TOKEN_ID));
+			});
+			it(`getVirtualY`, async () => {
+				expectAlmostEqualMantissa(bnMantissa(virtualY), await collateral.getVirtualY.call(TOKEN_ID));
+			});
+			it(`getRealX`, async () => {
+				expectAlmostEqualMantissa(bnMantissa(realX), await collateral.getRealX.call(TOKEN_ID));
+			});
+			it(`getRealY`, async () => {
+				expectAlmostEqualMantissa(bnMantissa(realY), await collateral.getRealY.call(TOKEN_ID));
+			});
+			
+			it(`getCollateralValue`, async () => {
+				const value = await collateral.getCollateralValueWithPrice.call(TOKEN_ID, sqrtX96(Math.sqrt(priceA * priceB)));
+				expectAlmostEqualMantissa(bnMantissa(liquidity / concentrationFactor), value);
+			});
+			
+			it(`getDebtValue`, async () => {
+				// alternative approach to check the math is ok
+				const collateralValue = await collateral.getCollateralValue.call(TOKEN_ID) / 1e18;
+				const debtValue = await collateral.getDebtValue.call(TOKEN_ID) / 1e18;
+				const collateralValueAsY = realX * price + realY;
+				const debtValueAsY = borrowAmountA * price + borrowAmountB;
+				expectAlmostEqualMantissa(
+					bnMantissa(debtValueAsY / collateralValueAsY), 
+					bnMantissa(debtValue / collateralValue)
 				);
-				expectAlmostEqualMantissa(liquidity, bnMantissa(expectedLiquidity));
-				expectAlmostEqualMantissa(shortfall, bnMantissa(expectedShortfall));
 			});
-
-			it(`transfer:succeed`, async () => {
-				if (expectedShortfall > 0) return;
-				const transferAmount = slightlyDecrease(bnMantissa(expectedLiquidity / exchangeRate));
-				expect(await collateral.tokensUnlocked.call(user, transferAmount)).to.eq(true);
-				await collateral.transfer(address(0), transferAmount, {from: user});
+			
+			it(`getLiquidityPostLiquidation`, async () => {
+				const collateralValue = await collateral.getCollateralValue.call(TOKEN_ID) / 1e18;
+				const debtValue = await collateral.getDebtValue.call(TOKEN_ID) / 1e18;
+				const collateralNeeded = debtValue * liquidationPenalty;
+				expectAlmostEqualMantissa(bnMantissa(collateralValue - collateralNeeded), await collateral.getLiquidityPostLiquidation.call(TOKEN_ID));
 			});
-
-			it(`transfer:fail`, async () => {
-				const transferAmount = slightlyIncrease(bnMantissa(expectedLiquidity / exchangeRate + 0.0000001));
-				expect(await collateral.tokensUnlocked.call(user, transferAmount)).to.eq(false);
-				await expectRevert(collateral.transfer(address(0), transferAmount, {from: user}), 'Impermax: INSUFFICIENT_LIQUIDITY');
+			
+			it(`getPostLiquidationCollateralRatio`, async () => {
+				const collateralValue = await collateral.getCollateralValue.call(TOKEN_ID) / 1e18;
+				const debtValue = await collateral.getDebtValue.call(TOKEN_ID) / 1e18;
+				const collateralNeeded = debtValue * liquidationPenalty;
+				expectAlmostEqualMantissa(bnMantissa(collateralValue / collateralNeeded), await collateral.getPostLiquidationCollateralRatio.call(TOKEN_ID));
 			});
-
-			it(`accountLiquidity`, async () => {
-				const {liquidity, shortfall} = await collateral.accountLiquidity.call(user);
-				expectAlmostEqualMantissa(liquidity, bnMantissa(expectedLiquidity));
-				expectAlmostEqualMantissa(shortfall, bnMantissa(expectedShortfall));
+			
+			it(`isLiquidatable`, async () => {
+				const availableLiquidityAsY = getAvailableLiquidityAsY(testCase);
+				const isLiquidatable = availableLiquidityAsY < 0;
+				console.log(isLiquidatable)
+				expect(isLiquidatable).to.eq(await collateral.isLiquidatable.call(TOKEN_ID));
 			});
-
-			it(`accountLiquidityAmounts`, async () => {
-				const {liquidity, shortfall} = await collateral.accountLiquidityAmounts.call(user, bnMantissa(amounts[1]), bnMantissa(amounts[2]));
-				expectAlmostEqualMantissa(liquidity, bnMantissa(expectedLiquidity));
-				expectAlmostEqualMantissa(shortfall, bnMantissa(expectedShortfall));
+			
+			it(`redeeming 0.01% fails if isLiquidatable`, async () => {
+				const availableLiquidityAsY = getAvailableLiquidityAsY(testCase);
+				const isLiquidatable = availableLiquidityAsY < 0;
+				if (!isLiquidatable) {
+					await collateral.redeem.call(borrower, TOKEN_ID, bnMantissa(0.01 / 100), {from: borrower});
+				} else {
+					await expectRevert(
+						collateral.redeem.call(borrower, TOKEN_ID, bnMantissa(0.01 / 100), {from: borrower}),
+						"ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY"
+					);
+				}
+			});
+			
+			it(`isUnderwater`, async () => {
+				const liquidityPostLiquidationAsY = getLiquidityPostLiquidationAsY(testCase);
+				const isUnderwater = liquidityPostLiquidationAsY < 0;
+				console.log(isUnderwater)
+				expect(isUnderwater).to.eq(await collateral.isUnderwater.call(TOKEN_ID));
 			});
 
 			it(`canBorrow`, async () => {
-				const r = expectedShortfall == 0;
-				expect(await collateral.canBorrow.call(user, borrowable0.address, bnMantissa(amounts[1]))).to.eq(r);
-				expect(await collateral.canBorrow.call(user, borrowable1.address, bnMantissa(amounts[2]))).to.eq(r);
+				const availableLiquidityAsY = getAvailableLiquidityAsY(testCase);
+				const [maxBorrowable0, maxBorrowable1] = getMaxBorrowableXAndY(testCase);
+				
+				//const initTest = await collateral.canBorrowTest.call(TOKEN_ID, borrowable0.address, bnMantissa(borrowAmountA));
+				//const test1 = await collateral.canBorrowTest.call(TOKEN_ID, borrowable0.address, bnMantissa(maxBorrowable0));
+				//const test2 = await collateral.canBorrowTest.call(TOKEN_ID, borrowable1.address, bnMantissa(maxBorrowable1));
+				//console.log("initTest", initTest.liquidity1 / 1e18, initTest.liquidity2 / 1e18);
+				//console.log("test1", test1.liquidity1 / 1e18, test1.liquidity2 / 1e18);
+				//console.log("test2", test2.liquidity1 / 1e18, test2.liquidity2 / 1e18);
+								
+				const r = availableLiquidityAsY > 0;
+				expect(await collateral.canBorrow.call(TOKEN_ID, borrowable0.address, bnMantissa(borrowAmountA))).to.eq(r);
+				expect(await collateral.canBorrow.call(TOKEN_ID, borrowable1.address, bnMantissa(borrowAmountB))).to.eq(r);
 				if (maxBorrowable0 < 0) {
-					expect(await collateral.canBorrow.call(user, borrowable0.address, "0")).to.eq(false);
+					expect(await collateral.canBorrow.call(TOKEN_ID, borrowable0.address, "0")).to.eq(false);
 				} else if (maxBorrowable0 == 0) {
-					expect(await collateral.canBorrow.call(user, borrowable0.address, "0")).to.eq(true);
+					expect(await collateral.canBorrow.call(TOKEN_ID, borrowable0.address, "0")).to.eq(true);
 				} else {
 					const succeedAmount = slightlyDecrease( bnMantissa(maxBorrowable0) );
 					const failAmount = slightlyIncrease( bnMantissa(maxBorrowable0) );
-					expect(await collateral.canBorrow.call(user, borrowable0.address, succeedAmount)).to.eq(true);
-					expect(await collateral.canBorrow.call(user, borrowable0.address, failAmount)).to.eq(false);
+					expect(await collateral.canBorrow.call(TOKEN_ID, borrowable0.address, succeedAmount)).to.eq(true);
+					expect(await collateral.canBorrow.call(TOKEN_ID, borrowable0.address, failAmount)).to.eq(false);
 				}
 				if (maxBorrowable1 < 0) {
-					expect(await collateral.canBorrow.call(user, borrowable1.address, "0")).to.eq(false);
+					expect(await collateral.canBorrow.call(TOKEN_ID, borrowable1.address, "0")).to.eq(false);
 				} else if (maxBorrowable1 == 0) {
-					expect(await collateral.canBorrow.call(user, borrowable1.address, "0")).to.eq(true);
+					expect(await collateral.canBorrow.call(TOKEN_ID, borrowable1.address, "0")).to.eq(true);
 				} else {
 					const succeedAmount = slightlyDecrease( bnMantissa(maxBorrowable1) );
 					const failAmount = slightlyIncrease( bnMantissa(maxBorrowable1) );
-					expect(await collateral.canBorrow.call(user, borrowable1.address, succeedAmount)).to.eq(true);
-					expect(await collateral.canBorrow.call(user, borrowable1.address, failAmount)).to.eq(false);
+					expect(await collateral.canBorrow.call(TOKEN_ID, borrowable1.address, succeedAmount)).to.eq(true);
+					expect(await collateral.canBorrow.call(TOKEN_ID, borrowable1.address, failAmount)).to.eq(false);
+				}
+			});
+			
+			it(`restructureBadDebt if underwater`, async () => {
+				if (await collateral.isUnderwater.call(TOKEN_ID)) {
+					console.log("restructureBadDebt");
+					const receipt = await collateral.restructureBadDebt(TOKEN_ID);					
+					expect(false).to.eq(await collateral.isUnderwater.call(TOKEN_ID));
+					expectEvent(receipt, "RestructureBadDebt", {tokenId: TOKEN_ID});
+				} else {
+					await expectRevert(
+						collateral.restructureBadDebt(TOKEN_ID),
+						"ImpermaxV3Collateral: NOT_UNDERWATER"
+					);
+				}
+			});
+			
+			it(`seize if is liquidatable`, async () => {
+				// CHECK EVERYTHING, EVEN UNAUTHORIZED AND reservesManager	
+				await expectRevert(
+					collateral.seize(TOKEN_ID, 0, address(0), "0x"),
+					"ImpermaxV3Collateral: UNAUTHORIZED"
+				);
+				if (await collateral.isLiquidatable.call(TOKEN_ID)) {
+					console.log("liquidate");
+					
+					const repayAmount1 = await borrowable0.borrowBalance.call(TOKEN_ID);
+					if (repayAmount1 * 1 > 0) {
+						const realX = await collateral.getRealX.call(TOKEN_ID) / 1e18;
+						const realY = await collateral.getRealY.call(TOKEN_ID) / 1e18;
+						const totalLiquidity = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity / 1e18;
+						const seizeTokenId = await borrowable0.restructureBadDebtAndSeizeCollateral.call(TOKEN_ID, repayAmount1, liquidator, "0x");	
+						const feeTokenId = seizeTokenId * 1 + 1;
+						
+						const receipt = await borrowable0.restructureBadDebtAndSeizeCollateral(TOKEN_ID, repayAmount1, liquidator, "0x");
+						const seizeLiquidity = (await tokenizedCLPosition.position(seizeTokenId)).liquidity;
+						const feeLiquidity = (await tokenizedCLPosition.position(feeTokenId)).liquidity;
+						const liquidityAfter = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity;
+						
+						const collateralValueAsY = realX * price + realY;
+						const debtValueAsY = borrowAmountA * price + borrowAmountB;
+						let repayValueAsY = repayAmount1 * price / 1e18;
+						if (collateralValueAsY < debtValueAsY * liquidationPenalty) {
+							repayValueAsY *= collateralValueAsY / (debtValueAsY * liquidationPenalty);
+						}
+						
+						const expectedSeizeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationIncentive;
+						const expectedFeeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationFee;
+						const expectedLiquidityAfter = totalLiquidity - expectedFeeLiquidity - expectedSeizeLiquidity;
+						
+						expect(await tokenizedCLPosition.ownerOf(seizeTokenId)).to.eq(liquidator);
+						if (expectedFeeLiquidity > 0) {
+							expect(await tokenizedCLPosition.ownerOf(feeTokenId)).to.eq(collateral.address);
+							expect(await collateral.ownerOf(feeTokenId)).to.eq(reservesManager);
+						}
+						
+						expectAlmostEqualMantissa(seizeLiquidity, bnMantissa(expectedSeizeLiquidity));
+						expectAlmostEqualMantissa(feeLiquidity, bnMantissa(expectedFeeLiquidity));
+						expectAlmostEqualMantissa(liquidityAfter, bnMantissa(expectedLiquidityAfter));
+					}
+
+					const repayAmount2 = await borrowable1.borrowBalance.call(TOKEN_ID);	
+					if (repayAmount2 * 1 > 0 && await collateral.isLiquidatable.call(TOKEN_ID)) {
+						const realX = await collateral.getRealX.call(TOKEN_ID) / 1e18;
+						const realY = await collateral.getRealY.call(TOKEN_ID) / 1e18;
+						const totalLiquidity = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity / 1e18;
+						const seizeTokenId = await borrowable1.restructureBadDebtAndSeizeCollateral.call(TOKEN_ID, repayAmount2, liquidator, "0x");	
+						const feeTokenId = seizeTokenId * 1 + 1;
+						
+						const receipt = await borrowable1.restructureBadDebtAndSeizeCollateral(TOKEN_ID, repayAmount2, liquidator, "0x");
+						const seizeLiquidity = (await tokenizedCLPosition.position(seizeTokenId)).liquidity;
+						const feeLiquidity = (await tokenizedCLPosition.position(feeTokenId)).liquidity;
+						const liquidityAfter = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity;
+						
+						const collateralValueAsY = realX * price + realY;
+						let repayValueAsY = repayAmount2 / 1e18;
+						
+						const expectedSeizeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationIncentive;
+						const expectedFeeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationFee;
+						const expectedLiquidityAfter = totalLiquidity - expectedFeeLiquidity - expectedSeizeLiquidity;
+						
+						expect(await tokenizedCLPosition.ownerOf(seizeTokenId)).to.eq(liquidator);
+						if (expectedFeeLiquidity > 0) {
+							expect(await tokenizedCLPosition.ownerOf(feeTokenId)).to.eq(collateral.address);
+							expect(await collateral.ownerOf(feeTokenId)).to.eq(reservesManager);
+						}
+						
+						expectAlmostEqualMantissa(seizeLiquidity, bnMantissa(expectedSeizeLiquidity));
+						expectAlmostEqualMantissa(feeLiquidity, bnMantissa(expectedFeeLiquidity));
+						expectAlmostEqualMantissa(liquidityAfter, bnMantissa(expectedLiquidityAfter));
+					}
+				} else {
+					await expectRevert(
+						borrowable0.restructureBadDebtAndSeizeCollateral(TOKEN_ID, 0, address(0), "0x"),
+						"ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL"
+					);
 				}
 			});
 		});
 	});
 	
-	describe('seize', () => {
+	
+	describe('mint and redeem', () => {
+		let tokenizedCLPosition;
 		let collateral;
 		let borrowable0;
 		let borrowable1;
-		const exchangeRate = 2;
+		const safetyMargin = 2.5;
 		const liquidationIncentive = 1.02;
 		const liquidationFee = 0.02;
 		const liquidationPenalty = liquidationIncentive + liquidationFee;
-		const price0 = 2;
-		const price1 = 0.5;
-		const collateralTokens = 100;
-		const maxRepay0 = (collateralTokens * exchangeRate) / price0 / liquidationPenalty;
-		const maxRepay1 = (collateralTokens * exchangeRate) / price1 / liquidationPenalty;
+		const price = 1;
 		
 		before(async () => {
+			tokenizedCLPosition = await makeTokenizedCLPosition();
 			collateral = await Collateral.new();
 			borrowable0 = await Borrowable.new();
 			borrowable1 = await Borrowable.new();
 			await collateral.setFactoryHarness(factory.address);
 			await collateral.setBorrowable0Harness(borrowable0.address);				
 			await collateral.setBorrowable1Harness(borrowable1.address);
-			await collateral.setExchangeRateHarness(bnMantissa(exchangeRate));				
+			await collateral.setUnderlyingHarness(tokenizedCLPosition.address);
+			
+			await collateral._setSafetyMarginSqrt(bnMantissa(Math.sqrt(safetyMargin)), {from: admin});
 			await collateral._setLiquidationIncentive(bnMantissa(liquidationIncentive), {from: admin});
-			await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});
-			await collateral.setPricesHarness(bnMantissa(price0), bnMantissa(price1));
-		});
-		
-		it(`fail if msg.sender is not borrowable`, async () => {
-			await expectRevert(collateral.seize(address(0), address(0), '0'), "Impermax: UNAUTHORIZED");
-		});
-		
-		it(`fail if shortfall is insufficient`, async () => {
-			await collateral.setAccountLiquidityHarness(borrower, '0', '0');
-			await expectRevert(
-				borrowable0.seizeHarness(collateral.address, liquidator, borrower, '0'), 
-				"Impermax: INSUFFICIENT_SHORTFALL"
-			);
-			await expectRevert(
-				borrowable1.seizeHarness(collateral.address, liquidator, borrower, '0'), 
-				"Impermax: INSUFFICIENT_SHORTFALL"
-			);
-		});
-		
-		it(`fail if repayAmount is too high`, async () => {
-			await collateral.setAccountLiquidityHarness(borrower, '0', '1');
-			await collateral.setBalanceHarness(borrower, bnMantissa(collateralTokens));
-			await expectRevert(
-				borrowable0.seizeHarness(collateral.address, liquidator, borrower, slightlyIncrease(bnMantissa(maxRepay0))), 
-				"Impermax: LIQUIDATING_TOO_MUCH"
-			);
-			await expectRevert(
-				borrowable1.seizeHarness(collateral.address, liquidator, borrower, slightlyIncrease(bnMantissa(maxRepay1))), 
-				"Impermax: LIQUIDATING_TOO_MUCH"
-			);
-		});
-		
-		it(`seize succeed`, async () => {
-			await collateral.setAccountLiquidityHarness(borrower, '0', '1');
-			const expectedLiquidity = slightlyDecrease(bnMantissa(collateralTokens * (liquidationPenalty - liquidationFee) / liquidationPenalty));
-			const expectedReservesLiquidity = slightlyDecrease(bnMantissa(collateralTokens * liquidationFee / liquidationPenalty));
+			await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});				
+			await tokenizedCLPosition.oraclePriceSqrtX96Harness(sqrtX96(price));
 			
-			//Repay with borrowable0
-			await collateral.setBalanceHarness(liquidator, '0');
-			await collateral.setBalanceHarness(reservesManager, '0');
-			await collateral.setBalanceHarness(borrower, bnMantissa(collateralTokens));
-			const repayAmount0 = slightlyDecrease(bnMantissa(maxRepay0));
-			const receipt0 = await borrowable0.seizeHarness(collateral.address, liquidator, borrower, repayAmount0);
-			expectEvent(receipt0, 'Transfer', {
-				'from': borrower,
-				'to': liquidator,
-			});
-			expectEvent(receipt0, 'Transfer', {
-				'from': borrower,
-				'to': reservesManager,
-			});
-			expectAlmostEqualMantissa(await collateral.balanceOf(liquidator), expectedLiquidity);
-			expectAlmostEqualMantissa(await collateral.balanceOf(reservesManager), expectedReservesLiquidity);
-			
-			//Repay with borrowable1
-			await collateral.setBalanceHarness(liquidator, '0');
-			await collateral.setBalanceHarness(reservesManager, '0');
-			await collateral.setBalanceHarness(borrower, bnMantissa(collateralTokens));
-			const repayAmount1 = slightlyDecrease(bnMantissa(maxRepay1));
-			const receipt1 = await borrowable1.seizeHarness(collateral.address, liquidator, borrower, repayAmount1);
-			expectEvent(receipt1, 'Transfer', {
-				'from': borrower,
-				'to': liquidator,
-			});
-			expectEvent(receipt0, 'Transfer', {
-				'from': borrower,
-				'to': reservesManager,
-			});
-			expectAlmostEqualMantissa(await collateral.balanceOf(liquidator), expectedLiquidity);
-			expectAlmostEqualMantissa(await collateral.balanceOf(reservesManager), expectedReservesLiquidity);
+			await tokenizedCLPosition.setOwnerHarness(user, TOKEN_ID);			
+			await tokenizedCLPosition.setPositionHarness(TOKEN_ID, bnMantissa(100), sqrtX96(1), sqrtX96(2));
+		});
+		
+		it(`mint fail if nft is not received`, async () => {
+			await expectRevert(collateral.mint(user, TOKEN_ID), "ImpermaxV3Collateral: NFT_NOT_RECEIVED");
+		});
+		
+		it(`mint nft`, async () => {
+			await tokenizedCLPosition.transferFrom(user, collateral.address, TOKEN_ID, {from:user});
+			await collateral.mint(user, TOKEN_ID);
+		});
+		
+		it(`mint fail if nft is already minted`, async () => {
+			await expectRevert(collateral.mint(root, TOKEN_ID), "ImpermaxV3Collateral: NFT_ALREADY_MINTED");
+		});
+		
+		it(`transfer position`, async () => {
+			await collateral.transferFrom(user, borrower, TOKEN_ID, {from:user});
+			expect(await collateral.ownerOf(TOKEN_ID)).to.eq(borrower);
+		});
+		
+		it(`redeem fail if unauthorized`, async () => {
+			await expectRevert(collateral.redeem(user, TOKEN_ID, oneMantissa, {from: user}), "ImpermaxERC721: UNAUTHORIZED");
+		});
+		
+		it(`redeem fail if > 100%`, async () => {
+			await expectRevert(collateral.redeem(user, TOKEN_ID, oneMantissa.add(new BN(1)), {from: borrower}), "ImpermaxV3Collateral: PERCENTAGE_ABOVE_100");
+		});
+		
+		it(`redeem fail if liquidatable 0`, async () => {
+			await borrowable0.setBorrowBalanceHarness(TOKEN_ID, new BN(1));
+			await expectRevert(collateral.redeem(user, TOKEN_ID, oneMantissa, {from: borrower}), "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
+		});
+		
+		it(`redeem fail if liquidatable 1`, async () => {
+			await borrowable0.setBorrowBalanceHarness(TOKEN_ID, new BN(0));
+			await borrowable1.setBorrowBalanceHarness(TOKEN_ID, new BN(1));
+			await expectRevert(collateral.redeem(user, TOKEN_ID, oneMantissa, {from: borrower}), "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
+		});
+		
+		it(`redeem 100%`, async () => {
+			await borrowable1.setBorrowBalanceHarness(TOKEN_ID, new BN(0));
+			await collateral.redeem(user, TOKEN_ID, oneMantissa, {from: borrower});
+			expect(await tokenizedCLPosition.ownerOf(TOKEN_ID)).to.eq(user);
+		});
+		
+		it(`redeem 60% fails`, async () => {
+			await tokenizedCLPosition.transferFrom(user, collateral.address, TOKEN_ID, {from:user});
+			await collateral.mint(user, TOKEN_ID);
+			await borrowable1.setBorrowBalanceHarness(TOKEN_ID, bnMantissa(5));
+			await expectRevert(collateral.redeem(user, TOKEN_ID, bnMantissa(0.6), {from: user}), "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
+		});
+		
+		it(`redeem 50% succeeds`, async () => {
+			await collateral.redeem(user, TOKEN_ID, bnMantissa(0.5), {from: user});
 		});
 	});
-
-	describe('flash redeem', () => {
-		let collateral;
-		let underlying;
-		let callee;
-		let recipient;
 		
-		const exchangeRate = 2;
-		const redeemAmount = TEST_AMOUNT;
-		const redeemTokens = redeemAmount.div(new BN(exchangeRate)).add(new BN(1));
-		const collateralBalancePrior = TEST_AMOUNT.mul(new BN(2));
-		const totalSupplyPrior = collateralBalancePrior.div(new BN(exchangeRate));
-		
-		before(async () => {
-			collateral = await Collateral.new();
-			underlying = await makeUniswapV2Pair();
-			await collateral.setUnderlyingHarness(underlying.address);
-			await collateral.unlockTokensTransfer();
-			recipient = await Recipient.new();
-			callee = (await ImpermaxCallee.new(recipient.address, collateral.address)).address;
-		});
-		
-		beforeEach(async () => {
-			await collateral.setBalanceHarness(user, redeemTokens);
-			await collateral.setBalanceHarness(recipient.address, redeemTokens);
-			await collateral.setBalanceHarness(collateral.address, '0');
-			await collateral.setTotalSupply(totalSupplyPrior);
-			await underlying.setBalanceHarness(collateral.address, collateralBalancePrior);
-			await underlying.setBalanceHarness(user, '0');
-			await underlying.setBalanceHarness(recipient.address, '0');
-			await collateral.sync();
-		});
-		
-		it('redeem paying before', async () => {
-			const collateralBalance = collateralBalancePrior.sub(redeemAmount);
-			await collateral.transfer(collateral.address, redeemTokens, {from: user});
-			const receipt = await collateral.flashRedeem(user, redeemAmount, '0x');
-			expectEvent(receipt, 'Transfer', {
-				from: collateral.address,
-				to: address(0),
-				value: redeemTokens,
-			});
-			expectEvent(receipt, 'Transfer', {
-				from: collateral.address,
-				to: user,
-				value: redeemAmount,
-			});
-			expectEvent(receipt, 'Sync', {
-				totalBalance: collateralBalance,
-			});
-			expectEvent(receipt, 'Redeem', {
-				sender: root,
-				redeemer: user,
-				redeemAmount: redeemAmount,
-				redeemTokens: redeemTokens,
-			});
-			
-			expectEqual(await collateral.totalSupply(), totalSupplyPrior.sub(redeemTokens));
-			expectEqual(await collateral.balanceOf(user), 0);
-			expectEqual(await underlying.balanceOf(collateral.address), collateralBalance);
-			expectEqual(await collateral.totalBalance(), collateralBalance);
-			expectEqual(await underlying.balanceOf(user), redeemAmount);
-			expectEqual(await collateral.exchangeRate.call(), oneMantissa.mul(new BN(exchangeRate)));
-		});
-		
-		it('redeem fails if redeemTokens is not enough', async () => {
-			await collateral.transfer(collateral.address, redeemTokens.sub(new BN(1)), {from: user});
-			await expectRevert(collateral.flashRedeem(user, redeemAmount, '0x'), 'Impermax: INSUFFICIENT_REDEEM_TOKENS');
-		});
-		
-		it('redeemTokens can be more than needed', async () => {
-			const collateralBalance = collateralBalancePrior.sub(redeemAmount.div(new BN(2)));
-			await collateral.transfer(collateral.address, redeemTokens, {from: user});
-			const receipt = await collateral.flashRedeem(user, redeemAmount.div(new BN(2)), '0x');
-			expectEvent(receipt, 'Transfer', {
-				from: collateral.address,
-				to: address(0),
-				value: redeemTokens,
-			});
-			expectEvent(receipt, 'Transfer', {
-				from: collateral.address,
-				to: user,
-				value: redeemAmount.div(new BN(2)),
-			});
-			expectEvent(receipt, 'Sync', {
-				totalBalance: collateralBalance,
-			});
-			expectEvent(receipt, 'Redeem', {
-				sender: root,
-				redeemer: user,
-				redeemAmount: redeemAmount.div(new BN(2)),
-				redeemTokens: redeemTokens,
-			});
-			
-			expectEqual(await collateral.totalSupply(), totalSupplyPrior.sub(redeemTokens));
-			expectEqual(await collateral.balanceOf(user), 0);
-			expectEqual(await underlying.balanceOf(collateral.address), collateralBalance);
-			expectEqual(await collateral.totalBalance(), collateralBalance);
-			expectEqual(await underlying.balanceOf(user), redeemAmount.div(new BN(2)));
-		});
-		
-		it('redeem fails if redeemAmount exceeds cash', async () => {
-			await expectRevert(
-				collateral.flashRedeem(user, collateralBalancePrior.add(new BN(1)), '0x'), 
-				'Impermax: INSUFFICIENT_CASH'
-			);
-		});
-		
-		it('flash redeem', async () => {
-			const collateralBalance = collateralBalancePrior.sub(redeemAmount);
-			const receipt = await collateral.flashRedeem(callee, redeemAmount, '0x1');
-			
-			expectEqual(await collateral.totalSupply(), totalSupplyPrior.sub(redeemTokens));
-			expectEqual(await collateral.balanceOf(callee), 0);
-			expectEqual(await underlying.balanceOf(collateral.address), collateralBalance);
-			expectEqual(await collateral.totalBalance(), collateralBalance);
-			expectEqual(await underlying.balanceOf(callee), redeemAmount);
-			expectEqual(await collateral.exchangeRate.call(), oneMantissa.mul(new BN(exchangeRate)));
-		});
-	});
-	
 	describe('reentrancy', () => {
 		let collateral;
-		let underlying;
+		let tokenizedCLPosition;
 		let receiver;
 		before(async () => {
 			collateral = await Collateral.new();
-			underlying = await makeUniswapV2Pair();
-			await collateral.setUnderlyingHarness(underlying.address);
-			receiver = (await ReentrantCallee.new()).address;
+			receiver = (await ReentrantCallee.new()).address;				
+			tokenizedCLPosition = await makeTokenizedCLPosition();
+			await collateral.setUnderlyingHarness(tokenizedCLPosition.address);
+			await tokenizedCLPosition.setOwnerHarness(collateral.address, TOKEN_ID);
 		});
 		
 		it(`borrow reentrancy`, async () => {
-			await expectRevert(collateral.flashRedeem(receiver, '0', encode(['uint'], [1])), 'Impermax: REENTERED');
-			await expectRevert(collateral.flashRedeem(receiver, '0', encode(['uint'], [2])), 'Impermax: REENTERED');
-			await expectRevert(collateral.flashRedeem(receiver, '0', encode(['uint'], [3])), 'Impermax: REENTERED');
-			await expectRevert(collateral.flashRedeem(receiver, '0', encode(['uint'], [4])), 'Impermax: REENTERED');
-			await expectRevert(collateral.flashRedeem(receiver, '0', encode(['uint'], [5])), 'Impermax: REENTERED');
-			await expectRevert(collateral.flashRedeem(receiver, '0', encode(['uint'], [0])), 'TEST');
+			await expectRevert(collateral.testReentrancy(receiver, TOKEN_ID, encode(['uint'], [0])), 'TEST');
+			await expectRevert(collateral.testReentrancy(receiver, TOKEN_ID, encode(['uint'], [1])), 'ImpermaxV3Collateral: REENTERED');
+			await expectRevert(collateral.testReentrancy(receiver, TOKEN_ID, encode(['uint'], [2])), 'ImpermaxV3Collateral: REENTERED');
+			await expectRevert(collateral.testReentrancy(receiver, TOKEN_ID, encode(['uint'], [3])), 'ImpermaxV3Collateral: REENTERED');
+			await expectRevert(collateral.testReentrancy(receiver, TOKEN_ID, encode(['uint'], [4])), 'ImpermaxV3Collateral: REENTERED');
 		});
 	});
 });

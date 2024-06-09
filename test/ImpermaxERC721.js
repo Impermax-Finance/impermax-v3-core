@@ -1,8 +1,7 @@
 const {
 	ImpermaxERC721,
 	getDomainSeparator,
-	getApprovalDigest,
-	sendPermit,
+	sendNftPermit,
 } = require('./Utils/Impermax');
 const {
 	expectEqual,
@@ -10,11 +9,17 @@ const {
 	expectEvent,
 	BN,
 } = require('./Utils/JS');
+const {
+	address,
+} = require('./Utils/Ethereum');
 const { keccak256, toUtf8Bytes } = require('ethers/utils');
 
 const NAME = 'Tokenized Uni V3 Position';
 const SYMBOL = 'WUNIV3';
+const ROOT_NFT = new BN(0);
 const TEST_NFT = new BN(1);
+const TEST_NFT2 = new BN(2);
+const TEST_PERMIT_NFT = new BN(101);
 const MAX_UINT_256 = (new BN(2)).pow(new BN(256)).sub(new BN(1));
 
 contract('ImpermaxERC721', function (accounts) {
@@ -43,9 +48,9 @@ contract('ImpermaxERC721', function (accounts) {
 	
 	beforeEach(async () => {
 		token = await ImpermaxERC721.new(NAME, SYMBOL);
-		await token.mint(root, 0);
-		await token.mint(user, 1);
-		await token.mint(user, 2);
+		await token.mint(root, ROOT_NFT);
+		await token.mint(user, TEST_NFT);
+		await token.mint(user, TEST_NFT2);
 	});
 	
 	it('name, symbol, DOMAIN_SEPARATOR, PERMIT_TYPEHASH', async () => {
@@ -53,9 +58,9 @@ contract('ImpermaxERC721', function (accounts) {
 		expect(await token.symbol()).to.eq(SYMBOL);
 		expectEqual(await token.balanceOf(root), 1);
 		expectEqual(await token.balanceOf(user), 2);
-		expect(await token.ownerOf(0)).to.eq(root);
-		expect(await token.ownerOf(1)).to.eq(user);
-		expect(await token.ownerOf(2)).to.eq(user);
+		expect(await token.ownerOf(ROOT_NFT)).to.eq(root);
+		expect(await token.ownerOf(TEST_NFT)).to.eq(user);
+		expect(await token.ownerOf(TEST_NFT2)).to.eq(user);
 		expect(await token.DOMAIN_SEPARATOR()).to.eq(getDomainSeparator(NAME, token.address));
 		expect(await token.PERMIT_TYPEHASH()).to.eq(
 			keccak256(toUtf8Bytes('Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)'))
@@ -70,138 +75,83 @@ contract('ImpermaxERC721', function (accounts) {
 			tokenId: TEST_NFT,
 		});
 		expectEqual(await token.getApproved(TEST_NFT), other);
-		// check can't approve if not owner
 	});
-/*
-	it('transfer', async () => {
-		const receipt = await token.transfer(other, TEST_AMOUNT, {from: user});
-		expectEvent(receipt, 'Transfer', {
-			from: user,
-			to: other,
-			value: TEST_AMOUNT,
+	
+	it('approve is nulled after transfer', async () => {
+		await token.approve(other, TEST_NFT, {from: user});
+		await token.transferFrom(user, root, TEST_NFT, {from: other});
+		expectEqual(await token.getApproved(TEST_NFT), address(0));
+	});
+	
+	it('approve:fail', async () => {
+		await expectRevert(
+			token.approve(other, ROOT_NFT, {from: user}),
+			'ImpermaxERC721: INVALID_APPROVER'
+		);
+	});
+	
+	it('approve for all', async () => {
+		expectEqual(await token.isApprovedForAll(user, other), false);
+		const receipt = await token.setApprovalForAll(other, true, {from: user});
+		expectEvent(receipt, 'ApprovalForAll', {
+			owner: user,
+			operator: other,
+			approved: true,
 		});
-		expectEqual(await token.balanceOf(user), TOTAL_SUPPLY.sub(TEST_AMOUNT));
-		expectEqual(await token.balanceOf(other), TEST_AMOUNT);
-	});
-
-	it('transfer:fail', async () => {
-		await expectRevert(token.transfer(other, TOTAL_SUPPLY.add(new BN(1)), {from: user}), 'Impermax: TRANSFER_TOO_HIGH');
-		await expectRevert(token.transfer(user, "1", {from: other}), 'Impermax: TRANSFER_TOO_HIGH');
+		expectEqual(await token.isApprovedForAll(user, other), true);
 	});
 
 	it('transferFrom', async () => {
-		await token.approve(other, TEST_AMOUNT, {from: user});
-		const receipt = await token.transferFrom(user, other, TEST_AMOUNT, {from: other});
+		const receipt = await token.transferFrom(user, other, TEST_NFT, {from: user});
 		expectEvent(receipt, 'Transfer', {
 			from: user,
 			to: other,
-			value: TEST_AMOUNT,
+			tokenId: TEST_NFT,
 		});
-		expectEqual(await token.allowance(user, other), '0');
-		expectEqual(await token.balanceOf(user), TOTAL_SUPPLY.sub(TEST_AMOUNT));
-		expectEqual(await token.balanceOf(other), TEST_AMOUNT);
-	});
-
-	it('transferFrom:max', async () => {
-		await token.approve(other, MAX_UINT_256, {from: user});
-		const receipt = await token.transferFrom(user, other, TEST_AMOUNT, {from: other});
-		expectEvent(receipt, 'Transfer', {
-			from: user,
-			to: other,
-			value: TEST_AMOUNT,
-		});
-		expectEqual(await token.allowance(user, other), MAX_UINT_256);
-		expectEqual(await token.balanceOf(user), TOTAL_SUPPLY.sub(TEST_AMOUNT));
-		expectEqual(await token.balanceOf(other), TEST_AMOUNT);
+		expectEqual(await token.ownerOf(TEST_NFT), other);
 	});
 
 	it('transferFrom:fail', async () => {
-		await expectRevert(token.transferFrom(user, other, TEST_AMOUNT, {from: other}), 'Impermax: TRANSFER_NOT_ALLOWED');
-	});*/
+		await expectRevert(
+			token.transferFrom(user, other, ROOT_NFT, {from: user}),
+			'ImpermaxERC721: UNAUTHORIZED'
+		);
+		await expectRevert(
+			token.transferFrom(user, address(0), TEST_NFT, {from: user}),
+			'ImpermaxERC721: INVALID_RECEIVER'
+		);
+	});
+	
+	/* TODO SAFE TRANSFER STUFF */
 
 	it('permit', async () => {
-		const receipt = await sendPermit({
+		await token.mint(userForEip712, TEST_PERMIT_NFT);
+		const receipt = await sendNftPermit({
 			token: token,
-			owner: userForEip712,
 			spender: otherForEip712,
-			value: TEST_AMOUNT,
+			tokenId: TEST_PERMIT_NFT,
 			deadline: MAX_UINT_256,
 			private_key: userForEip712PK,
 		});
 		expectEvent(receipt, 'Approval', {
 			//owner: userForEip712,
-			//spender: otherForEip712,
-			value: TEST_AMOUNT,
+			//to: otherForEip712,
+			tokenId: TEST_PERMIT_NFT,
 		});
-		expectEqual(await token.allowance(userForEip712, otherForEip712), TEST_AMOUNT);
-		expectEqual(await token.nonces(userForEip712), 1);		
-		
-		/* This should work with Metamask
-		const data = JSON.stringify({
-			types: {
-				EIP712Domain: [
-					{ name: "name", type: "string" },
-					{ name: "version", type: "string" },
-					{ name: "chainId", type: "uint256" },
-					{ name: "verifyingContract", type: "address" },
-				],
-				Permit: [
-					{ name: "owner", type: "address" },
-					{ name: "spender", type: "address" },
-					{ name: "value", type: "uint256" },
-					{ name: "nonce", type: "uint256" },
-					{ name: "deadline", type: "uint256" },
-				],
-			},
-			domain: {
-				name: NAME,
-				version: "1",
-				chainId: 1,
-				verifyingContract: token.address,
-			},
-			primaryType: "Permit",
-			message: {
-				owner: user, 
-				spender: other, 
-				value: TEST_AMOUNT,
-				nonce: nonce,
-				deadline: deadline,
-			}
-		});
-		const signer = user;
-		
-		web3.currentProvider.send(
-			{
-				method: "eth_signTypedData",
-				params: [signer, data],
-				from: signer
-			},
-			function(err, result) {
-				if (err) {
-					return console.error(err);
-				}
-				console.log(result);
-				const signature = result.substring(2);
-				const r1 = "0x" + signature.substring(0, 64);
-				const s1 = "0x" + signature.substring(64, 128);
-				const v1 = parseInt(signature.substring(128, 130), 16);
-				// The signature is now comprised of r, s, and v.
-				console.log(v1, r1, s1);
-			}
-		);*/
-		
+		expectEqual(await token.getApproved(TEST_PERMIT_NFT), otherForEip712);
+		expectEqual(await token.nonces(TEST_PERMIT_NFT), 1);		
 	});
 	
 	it('permit:fail', async () => {
+		await token.mint(userForEip712, TEST_PERMIT_NFT);
 		await expectRevert(
-			sendPermit({
+			sendNftPermit({
 				token: token,
-				owner: userForEip712,
 				spender: otherForEip712,
-				value: TEST_AMOUNT,
+				tokenId: TEST_PERMIT_NFT,
 				deadline: MAX_UINT_256,
 				private_key: otherForEip712PK,
-			}), 'Impermax: INVALID_SIGNATURE'
+			}), 'ImpermaxERC721: INVALID_SIGNATURE'
 		);
 	});
 });

@@ -8,13 +8,13 @@ contract MockBorrowTracker is IBorrowTracker {
 	
 	constructor () public {}
 	
-	mapping(address => uint) public relativeBorrow;
+	mapping(uint => uint) public relativeBorrow;
 	uint public totalRelativeBorrows;
 
-	function trackBorrow(address borrower, uint borrowBalance, uint borrowIndex) external {
-		uint _relativeBorrowPrior = relativeBorrow[borrower];
+	function trackBorrow(uint tokenId, uint borrowBalance, uint borrowIndex) external {
+		uint _relativeBorrowPrior = relativeBorrow[tokenId];
 		uint _relativeBorrow = borrowBalance.mul(2**128).div(borrowIndex);
-		relativeBorrow[borrower] = _relativeBorrow;
+		relativeBorrow[tokenId] = _relativeBorrow;
 		if (_relativeBorrow > _relativeBorrowPrior) {
 			uint increaseAmount = _relativeBorrow - _relativeBorrowPrior;
 			totalRelativeBorrows = totalRelativeBorrows.add(increaseAmount);
@@ -25,8 +25,8 @@ contract MockBorrowTracker is IBorrowTracker {
 		}
 	}
 
-	function borrowPercentage(address borrower) external view returns (uint) {
+	function borrowPercentage(uint tokenId) external view returns (uint) {
 		if (totalRelativeBorrows == 0) return 0;
-		return relativeBorrow[borrower].mul(1e18).div(totalRelativeBorrows);
+		return relativeBorrow[tokenId].mul(1e18).div(totalRelativeBorrows);
 	}
 }
