@@ -2,16 +2,21 @@ pragma solidity =0.5.16;
 pragma experimental ABIEncoderV2;
 
 import "./SafeMath.sol";
+import "../interfaces/INFTLP.sol";
 
 library CollateralMath {
 	using SafeMath for uint;
 
+    uint constant Q32 = 2**32;
     uint constant Q96 = 2**96;
+    uint constant Q160 = 2**160;
+    uint constant Q192 = 2**192;
+	
+	enum Price {LOWEST, CURRENT, HIGHEST}
 
 	struct PositionObject {
-		uint liquidity;
-		uint paSqrtX96;
-		uint pbSqrtX96;
+		INFTLP.RealXYs realXYs;
+		uint priceSqrtX96;
 		uint debtX;
 		uint debtY;
 		uint liquidationPenalty;
@@ -19,19 +24,16 @@ library CollateralMath {
 	}
 	
 	function newPosition(
-		uint liquidity,
-		uint paSqrtX96,
-		uint pbSqrtX96,
+		INFTLP.RealXYs memory realXYs,
+		uint priceSqrtX96,
 		uint debtX,
 		uint debtY,
 		uint liquidationPenalty,
 		uint safetyMarginSqrt
 	) internal pure returns (PositionObject memory) {
-		require(paSqrtX96 < pbSqrtX96, "CollateralMath: PA > PB");
 		return PositionObject({
-			liquidity: liquidity,
-			paSqrtX96: paSqrtX96,
-			pbSqrtX96: pbSqrtX96,
+			realXYs: realXYs,
+			priceSqrtX96: priceSqrtX96,
 			debtX: debtX,
 			debtY: debtY,
 			liquidationPenalty: liquidationPenalty,
@@ -43,85 +45,61 @@ library CollateralMath {
         require(n < 2**255, "Impermax: SAFE112");
         return int256(n);
     }
-
-	// liquidity / price
-	function getVirtualX(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
-		return positionObject.liquidity.mul(Q96).div(priceSqrtX96);
-	}
-	// liquidity * price
-	function getVirtualY(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
-		return positionObject.liquidity.mul(priceSqrtX96).div(Q96);
-	}
 	
-	// if price in range: virtualX(price) - virtualX(pb)
-	// if price < pa: virtualX(pa) - virtualX(pb)
-	// if price > pb: 0
-	function getRealX(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
-		if (priceSqrtX96 < positionObject.paSqrtX96) priceSqrtX96 = positionObject.paSqrtX96;
-		uint surplusX = getVirtualX(positionObject, positionObject.pbSqrtX96);
-		uint virtualX = getVirtualX(positionObject, priceSqrtX96);
-		return virtualX > surplusX ? virtualX - surplusX : 0;
+	// price
+	function getRelativePriceX(uint priceSqrtX96) internal pure returns (uint) {
+		return priceSqrtX96;
 	}
-	// if price in range: virtualY(price) - virtualY(pa)
-	// if price > pb: virtualY(pb) - virtualX(pa)
-	// if price < pa: 0
-	function getRealY(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
-		if (priceSqrtX96 > positionObject.pbSqrtX96) priceSqrtX96 = positionObject.pbSqrtX96;
-		uint surplusY = getVirtualY(positionObject, positionObject.paSqrtX96);
-		uint virtualY = getVirtualY(positionObject, priceSqrtX96);
-		return virtualY > surplusY ? virtualY - surplusY : 0;
-	}
-	
-	// price / 2
-	function getPriceXSqrtX96(uint priceSqrtX96) internal pure returns (uint) {
-		return priceSqrtX96 / 2;
-	}
-	// 1 / price / 2
-	function getPriceYSqrtX96(uint priceSqrtX96) internal pure returns (uint) {
-		return uint(uint192(-1)).div(priceSqrtX96) / 2;
+	// 1 / price
+	function getRelativePriceY(uint priceSqrtX96) internal pure returns (uint) {
+		return Q192.div(priceSqrtX96);
 	}
 	
 	// amountX * priceX + amountY * priceY
-	function getValue(uint priceSqrtX96, uint amountX, uint amountY) internal pure returns (uint) {
-		uint priceXSqrtX96 = getPriceXSqrtX96(priceSqrtX96);
-		uint priceYSqrtX96 = getPriceYSqrtX96(priceSqrtX96);
-		return amountX.mul(priceXSqrtX96).div(Q96).add(amountY.mul(priceYSqrtX96).div(Q96));
+	function getValue(PositionObject memory positionObject, Price price, uint amountX, uint amountY) internal pure returns (uint) {
+		uint priceSqrtX96 = positionObject.priceSqrtX96;
+		if (price == Price.LOWEST) priceSqrtX96 = priceSqrtX96.mul(1e18).div(positionObject.safetyMarginSqrt);
+		if (price == Price.HIGHEST) priceSqrtX96 = priceSqrtX96.mul(positionObject.safetyMarginSqrt).div(1e18);
+		uint relativePriceX = getRelativePriceX(priceSqrtX96);
+		uint relativePriceY = getRelativePriceY(priceSqrtX96);
+		return amountX.mul(relativePriceX).div(Q96).add(amountY.mul(relativePriceY).div(Q96));
 	}
 	
 	// realX * priceX + realY * priceY
-	function getCollateralValue(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
-		uint realX = getRealX(positionObject, priceSqrtX96);
-		uint realY = getRealY(positionObject, priceSqrtX96);
-		return getValue(priceSqrtX96, realX, realY);
+	function getCollateralValue(PositionObject memory positionObject, Price price) internal pure returns (uint) {
+		INFTLP.RealXY memory realXY = positionObject.realXYs.currentPrice;
+		if (price == Price.LOWEST) realXY = positionObject.realXYs.lowestPrice;
+		if (price == Price.HIGHEST) realXY = positionObject.realXYs.highestPrice;
+		return getValue(positionObject, price, realXY.realX, realXY.realY);
 	}
 
 	// debtX * priceX + realY * debtY	
-	function getDebtValue(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
-		return getValue(priceSqrtX96, positionObject.debtX, positionObject.debtY);
+	function getDebtValue(PositionObject memory positionObject, Price price) internal pure returns (uint) {
+		return getValue(positionObject, price, positionObject.debtX, positionObject.debtY);
 	}
 	
 	// collateralValue - debtValue * liquidationPenalty
-	function getLiquidityPostLiquidation(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (int) {
-		uint collateralNeeded = getDebtValue(positionObject, priceSqrtX96).mul(positionObject.liquidationPenalty).div(1e18);
-		uint collateralValue = getCollateralValue(positionObject, priceSqrtX96);
+	function getLiquidityPostLiquidation(PositionObject memory positionObject, Price price) internal pure returns (int) {
+		uint collateralNeeded = getDebtValue(positionObject, price).mul(positionObject.liquidationPenalty).div(1e18);
+		uint collateralValue = getCollateralValue(positionObject, price);
 		return safeInt256(collateralValue) - safeInt256(collateralNeeded);
 	}
 	
 	// collateralValue / (debtValue * liquidationPenalty)
-	function getPostLiquidationCollateralRatio(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
-		uint collateralNeeded = getDebtValue(positionObject, priceSqrtX96).mul(positionObject.liquidationPenalty).div(1e18);
-		uint collateralValue = getCollateralValue(positionObject, priceSqrtX96);
+	function getPostLiquidationCollateralRatio(PositionObject memory positionObject) internal pure returns (uint) {
+		uint collateralNeeded = getDebtValue(positionObject, Price.CURRENT).mul(positionObject.liquidationPenalty).div(1e18);
+		uint collateralValue = getCollateralValue(positionObject, Price.CURRENT);
 		return collateralValue.mul(1e18).div(collateralNeeded);
 	}
 	
-	function isLiquidatable(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (bool) {
-		int a = getLiquidityPostLiquidation(positionObject, priceSqrtX96.mul(1e18).div(positionObject.safetyMarginSqrt));
-		int b = getLiquidityPostLiquidation(positionObject, priceSqrtX96.mul(positionObject.safetyMarginSqrt).div(1e18));
+	function isLiquidatable(PositionObject memory positionObject) internal pure returns (bool) {
+		int a = getLiquidityPostLiquidation(positionObject, Price.LOWEST);
+		int b = getLiquidityPostLiquidation(positionObject, Price.HIGHEST);
 		return a < 0 || b < 0;
 	}
 	
-	function isUnderwater(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (bool) {
-		int liquidity = getLiquidityPostLiquidation(positionObject, priceSqrtX96);
+	function isUnderwater(PositionObject memory positionObject) internal pure returns (bool) {
+		int liquidity = getLiquidityPostLiquidation(positionObject, Price.CURRENT);
 		return liquidity < 0;
 	}
 }

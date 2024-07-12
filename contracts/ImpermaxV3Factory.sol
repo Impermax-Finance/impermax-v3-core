@@ -5,7 +5,7 @@ import "./interfaces/IBDeployer.sol";
 import "./interfaces/IBorrowable.sol";
 import "./interfaces/ICDeployer.sol";
 import "./interfaces/ICollateral.sol";
-import "./interfaces/ITokenizedCLPosition.sol";
+import "./interfaces/INFTLP.sol";
 
 contract ImpermaxV3Factory is IFactory {
 	address public admin;
@@ -40,8 +40,8 @@ contract ImpermaxV3Factory is IFactory {
 	}
 	
 	function _getTokens(address tokenizedCLPosition) private view returns (address token0, address token1) {
-		token0 = ITokenizedCLPosition(tokenizedCLPosition).token0();
-		token1 = ITokenizedCLPosition(tokenizedCLPosition).token1();
+		token0 = INFTLP(tokenizedCLPosition).token0();
+		token1 = INFTLP(tokenizedCLPosition).token1();
 	}
 	
 	function _createLendingPool(address tokenizedCLPosition) private {
