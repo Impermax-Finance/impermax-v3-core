@@ -258,7 +258,7 @@ contract('Borrowable', function (accounts) {
 		let borrowable;
 		let borrowableB;
 		let underlying;
-		let tokenizedClPosition;
+		let tokenizedCLPosition;
 		let collateral;
 		let recipient;
 		
@@ -270,14 +270,14 @@ contract('Borrowable', function (accounts) {
 		const priceSqrtX96 = _2_96.mul(new BN(173205081)).div(new BN(100000000));
 		const paSqrtX96 = priceSqrtX96.div(new BN(2));
 		const pbSqrtX96 = priceSqrtX96.mul(new BN(2));
-		const liquidityUnderwater = oneMantissa.mul(new BN(30));
-		const liquidityLiquidatable = oneMantissa.mul(new BN(40));
-		const liquidityNotLiquidatable = oneMantissa.mul(new BN(50));
+		const liquidityUnderwater = oneMantissa.mul(new BN(14));
+		const liquidityOverwater = oneMantissa.mul(new BN(16));
+			
 		
 		const repayAmount = oneMantissa.mul(new BN(20));
-		const seizeLiquidity = repayAmount.mul(priceSqrtX96).div(_2_96).mul(liquidationPenalty).div(oneMantissa);
-		const seizeLiquidityLiquidator = repayAmount.mul(priceSqrtX96).div(_2_96).mul(liquidationIncentive).div(oneMantissa);
-		const seizeLiquidityReserves = repayAmount.mul(priceSqrtX96).div(_2_96).mul(liquidationFee).div(oneMantissa);
+		const seizeLiquidity = repayAmount.mul(price).div(price.add(new BN(1))).mul(liquidationPenalty).div(oneMantissa);
+		const seizeLiquidityLiquidator = repayAmount.mul(price).div(price.add(new BN(1))).mul(liquidationIncentive).div(oneMantissa);
+		const seizeLiquidityReserves = repayAmount.mul(price).div(price.add(new BN(1))).mul(liquidationFee).div(oneMantissa);
 		
 		async function pretendHasBorrowed(TOKEN_ID, amount) {
 			const borrowIndex = await borrowable.borrowIndex();
@@ -290,7 +290,7 @@ contract('Borrowable', function (accounts) {
 			borrowable = await Borrowable.new();
 			borrowableB = await Borrowable.new();
 			underlying = await makeErc20Token();
-			tokenizedClPosition = await makeTokenizedCLPosition();
+			tokenizedCLPosition = await makeTokenizedCLPosition();
 			collateral = await Collateral.new();
 			recipient = await Recipient.new();
 			await factory._setReservesManager(reservesManager, {from: reservesAdmin});
@@ -298,12 +298,12 @@ contract('Borrowable', function (accounts) {
 			await borrowable.setCollateralHarness(collateral.address);
 			await borrowable.sync(); //avoid undesired borrowBalance growing 
 			await collateral.setFactoryHarness(factory.address);
-			await collateral.setUnderlyingHarness(tokenizedClPosition.address);
+			await collateral.setUnderlyingHarness(tokenizedCLPosition.address);
 			await collateral.setBorrowable0Harness(borrowable.address);				
 			await collateral.setBorrowable1Harness(borrowableB.address);				
 			await collateral._setLiquidationIncentive(liquidationIncentive, {from: admin});
 			await collateral._setLiquidationFee(liquidationFee, {from: admin});
-			await collateral.setPriceSqrtX96Harness(priceSqrtX96);
+			await tokenizedCLPosition.setPriceSqrtX96Harness(priceSqrtX96);
 		});
 		
 		beforeEach(async () => {
@@ -312,35 +312,66 @@ contract('Borrowable', function (accounts) {
 		});
 		
 		it(`fail if not liquidatable`, async () => {
-			await tokenizedClPosition.setPositionHarness(TOKEN_ID, liquidityNotLiquidatable, paSqrtX96, pbSqrtX96);
-			await tokenizedClPosition.setOwnerHarness(collateral.address, TOKEN_ID);
+			await tokenizedCLPosition.setPositionHarness(
+				TOKEN_ID, 
+				liquidityOverwater,
+				liquidityOverwater,
+				liquidityOverwater,
+				liquidityOverwater,
+				liquidityOverwater,
+				liquidityOverwater
+			);
+			await tokenizedCLPosition.setOwnerHarness(collateral.address, TOKEN_ID);
 			await expectRevert(borrowable.liquidate(TOKEN_ID, repayAmount, liquidator, "0x"), "ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL");		
 		});
 		
 		it(`fail if underwater`, async () => {
-			await tokenizedClPosition.setPositionHarness(TOKEN_ID, liquidityUnderwater, paSqrtX96, pbSqrtX96);
+			await tokenizedCLPosition.setPositionHarness(
+				TOKEN_ID, 
+				liquidityUnderwater,
+				liquidityUnderwater,
+				liquidityUnderwater,
+				liquidityUnderwater,
+				liquidityUnderwater,
+				liquidityUnderwater
+			);
 			await pretendHasBorrowed( TOKEN_ID, repayAmount.mul(new BN(101)).div(new BN(100)) );
 			await expectRevert(borrowable.liquidate(TOKEN_ID, repayAmount, liquidator, "0x"), "ImpermaxV3Collateral: CANNOT_LIQUIDATE_UNDERWATER_POSITION");		
 		});
 		
 		it(`fail if insufficient repay`, async () => {
-			await tokenizedClPosition.setPositionHarness(TOKEN_ID, liquidityLiquidatable, paSqrtX96, pbSqrtX96);
+			await tokenizedCLPosition.setPositionHarness(
+				TOKEN_ID, 
+				liquidityUnderwater,
+				liquidityUnderwater,
+				liquidityOverwater,
+				liquidityOverwater,
+				liquidityUnderwater,
+				liquidityUnderwater
+			);
 			await pretendHasBorrowed(TOKEN_ID, repayAmount);
 			await underlying.setBalanceHarness(borrowable.address, repayAmount.sub(new BN(1)));
 			await expectRevert(borrowable.liquidate(TOKEN_ID, repayAmount, liquidator, "0x"), "ImpermaxV3Borrowable: INSUFFICIENT_ACTUAL_REPAY");
 		});
 		
 		it(`repayAmount equal accountBorrows`, async () => {
-			await tokenizedClPosition.setPositionHarness(TOKEN_ID, liquidityLiquidatable, paSqrtX96, pbSqrtX96);
+			await tokenizedCLPosition.setPositionHarness(
+				TOKEN_ID, 
+				liquidityUnderwater,
+				liquidityUnderwater,
+				liquidityOverwater,
+				liquidityOverwater,
+				liquidityUnderwater,
+				liquidityUnderwater
+			);
 			await pretendHasBorrowed(TOKEN_ID, repayAmount);
 			await underlying.setBalanceHarness(borrowable.address, repayAmount);
 			const seizeTokenId = await borrowable.liquidate.call(TOKEN_ID, repayAmount, liquidator, "0x");
 			const receipt = await borrowable.liquidate(TOKEN_ID, repayAmount, liquidator, "0x");
 			
-			const position = await tokenizedClPosition.position(seizeTokenId);
-			expect(position.paSqrtX96 * 1).to.eq(paSqrtX96 * 1);
-			expect(position.pbSqrtX96 * 1).to.eq(pbSqrtX96 * 1);
-			expectAlmostEqualMantissa(position.liquidity, seizeLiquidityLiquidator);
+			const position = await tokenizedCLPosition.getPositionData.call(seizeTokenId, 0);
+			expectAlmostEqualMantissa(position.realXYs.currentPrice.realX, seizeLiquidityLiquidator);
+			expectAlmostEqualMantissa(position.realXYs.currentPrice.realY, seizeLiquidityLiquidator);
 			expect(await borrowable.totalBorrows() * 1).to.eq(0);
 			expect(await borrowable.borrowBalance(TOKEN_ID) * 1).to.eq(0);
 			expect(await borrowable.totalBalance() * 1).to.eq(repayAmount * 1);
@@ -359,15 +390,24 @@ contract('Borrowable', function (accounts) {
 		it(`if repayAmount <= accountBorrowsPrior -> actualRepayAmount = repayAmount`, async () => {
 			const accountBorrowsPrior = repayAmount.mul(new BN(2));
 			const actualRepayAmount = repayAmount;
-			await tokenizedClPosition.setPositionHarness(TOKEN_ID, liquidityLiquidatable.mul(new BN(2)), paSqrtX96, pbSqrtX96);
+			await tokenizedCLPosition.setPositionHarness(
+				TOKEN_ID, 
+				liquidityUnderwater.mul(new BN(2)),
+				liquidityUnderwater.mul(new BN(2)),
+				liquidityOverwater.mul(new BN(2)),
+				liquidityOverwater.mul(new BN(2)),
+				liquidityUnderwater.mul(new BN(2)),
+				liquidityUnderwater.mul(new BN(2))
+			);
 			await pretendHasBorrowed(TOKEN_ID, accountBorrowsPrior);
 			await underlying.setBalanceHarness(borrowable.address, repayAmount);
 			const seizeTokenId = await borrowable.liquidate.call(TOKEN_ID, repayAmount, liquidator, "0x");
 			const receipt = await borrowable.liquidate(TOKEN_ID, repayAmount, liquidator, "0x");
 			const accountBorrows = accountBorrowsPrior.sub(actualRepayAmount);
 			
-			const position = await tokenizedClPosition.position(seizeTokenId);
-			expectAlmostEqualMantissa(position.liquidity, seizeLiquidityLiquidator);
+			const position = await tokenizedCLPosition.getPositionData.call(seizeTokenId, 0);
+			expectAlmostEqualMantissa(position.realXYs.currentPrice.realX, seizeLiquidityLiquidator);
+			expectAlmostEqualMantissa(position.realXYs.currentPrice.realY, seizeLiquidityLiquidator);
 			expect(await borrowable.totalBorrows() * 1).to.eq(accountBorrows * 1);
 			expect(await borrowable.borrowBalance(TOKEN_ID) * 1).to.eq(accountBorrows * 1);
 			expect(await borrowable.totalBalance() * 1).to.eq(repayAmount * 1);
@@ -386,15 +426,24 @@ contract('Borrowable', function (accounts) {
 		it(`if repayAmount > accountBorrowsPrior -> actualRepayAmount = accountBorrowsPrior`, async () => {
 			const accountBorrowsPrior = repayAmount.div(new BN(2));
 			const actualRepayAmount = accountBorrowsPrior;
-			await tokenizedClPosition.setPositionHarness(TOKEN_ID, liquidityLiquidatable.div(new BN(2)), paSqrtX96, pbSqrtX96);
+			await tokenizedCLPosition.setPositionHarness(
+				TOKEN_ID, 
+				liquidityUnderwater.div(new BN(2)),
+				liquidityUnderwater.div(new BN(2)),
+				liquidityOverwater.div(new BN(2)),
+				liquidityOverwater.div(new BN(2)),
+				liquidityUnderwater.div(new BN(2)),
+				liquidityUnderwater.div(new BN(2))
+			);
 			await pretendHasBorrowed(TOKEN_ID, accountBorrowsPrior);
 			await underlying.setBalanceHarness(borrowable.address, repayAmount);
 			const seizeTokenId = await borrowable.liquidate.call(TOKEN_ID, repayAmount, liquidator, "0x");
 			const receipt = await borrowable.liquidate(TOKEN_ID, repayAmount, liquidator, "0x");
 			const accountBorrows = accountBorrowsPrior.sub(actualRepayAmount);
 			
-			const position = await tokenizedClPosition.position(seizeTokenId);
-			expectAlmostEqualMantissa(position.liquidity, seizeLiquidityLiquidator.div(new BN(2)));
+			const position = await tokenizedCLPosition.getPositionData.call(seizeTokenId, 0);
+			expectAlmostEqualMantissa(position.realXYs.currentPrice.realX, seizeLiquidityLiquidator.div(new BN(2)));
+			expectAlmostEqualMantissa(position.realXYs.currentPrice.realY, seizeLiquidityLiquidator.div(new BN(2)));
 			expect(await borrowable.totalBorrows() * 1).to.eq(accountBorrows * 1);
 			expect(await borrowable.borrowBalance(TOKEN_ID) * 1).to.eq(accountBorrows * 1);
 			expect(await borrowable.totalBalance() * 1).to.eq(repayAmount * 1);
@@ -412,14 +461,23 @@ contract('Borrowable', function (accounts) {
 		
 		it(`flash liquidation`, async () => {
 			let liquidatorContract = await Liquidator.new(underlying.address, borrowable.address);
-			await tokenizedClPosition.setPositionHarness(TOKEN_ID, liquidityLiquidatable, paSqrtX96, pbSqrtX96);
+			await tokenizedCLPosition.setPositionHarness(
+				TOKEN_ID, 
+				liquidityUnderwater,
+				liquidityUnderwater,
+				liquidityOverwater,
+				liquidityOverwater,
+				liquidityUnderwater,
+				liquidityUnderwater
+			);
 			await pretendHasBorrowed(TOKEN_ID, repayAmount);
 			await underlying.setBalanceHarness(liquidatorContract.address, repayAmount);
 			const seizeTokenId = await borrowable.liquidate.call(TOKEN_ID, repayAmount, liquidatorContract.address, encode(['uint'], [repayAmount.toString()]));
 			const receipt = await borrowable.liquidate(TOKEN_ID, repayAmount, liquidatorContract.address, encode(['uint'], [repayAmount.toString()]));
 			
-			const position = await tokenizedClPosition.position(seizeTokenId);
-			expectAlmostEqualMantissa(position.liquidity, seizeLiquidityLiquidator);
+			const position = await tokenizedCLPosition.getPositionData.call(seizeTokenId, 0);
+			expectAlmostEqualMantissa(position.realXYs.currentPrice.realX, seizeLiquidityLiquidator);
+			expectAlmostEqualMantissa(position.realXYs.currentPrice.realY, seizeLiquidityLiquidator);
 			expect(await borrowable.totalBorrows() * 1).to.eq(0);
 			expect(await borrowable.borrowBalance(TOKEN_ID) * 1).to.eq(0);
 			expect(await borrowable.totalBalance() * 1).to.eq(repayAmount * 1);

@@ -44,60 +44,34 @@ function sqrtX96(n) {
 	return X96(Math.sqrt(n));
 }
 
-function getVirtualX(liquidity, price) {
-	return liquidity / Math.sqrt(price);
-}
-function getVirtualY(liquidity, price) {
-	return liquidity * Math.sqrt(price);
-}
-
-function getRealXAndY(params) {
-	const {liquidity, price, priceA, priceB} = params;
-	if (priceA > price) {
-		return [getVirtualX(liquidity, priceA) - getVirtualX(liquidity, priceB), 0];
-	}
-	if (priceB < price) {
-		return [0, getVirtualY(liquidity, priceB) - getVirtualY(liquidity, priceA)];
-	}
-	return [
-		getVirtualX(liquidity, price) - getVirtualX(liquidity, priceB),
-		getVirtualY(liquidity, price) - getVirtualY(liquidity, priceA)
-	]
-}
-
 function getLiquidityPostLiquidationAsY(params) {
-	const {liquidationIncentive, liquidationFee, price, borrowAmountA, borrowAmountB} = params;
+	const {liquidationIncentive, liquidationFee, price, realX, realY, borrowAmountA, borrowAmountB} = params;
 	const liquidationPenalty = liquidationIncentive + liquidationFee;
-	const [realX, realY] = getRealXAndY(params);
 	const collateralValueAsY = realX * price + realY;
 	const debtValueAsY = borrowAmountA * price + borrowAmountB;
 	const collateralNeededAsY = debtValueAsY * liquidationPenalty;
 	return collateralValueAsY - collateralNeededAsY;
 }
 
-function getAvailableLiquidityAsY(params) {
-	const {safetyMargin, liquidity, price, priceA, priceB, borrowAmountA, borrowAmountB} = params;
-	const params2 = {...params};
-	const prices = [price / safetyMargin, price * safetyMargin];
+function getAvailableLiquidityAsY(paramsLowPrice, paramsHighPrice) {
+	const {borrowAmountA, borrowAmountB} = paramsLowPrice;
+	const scenarios = [paramsLowPrice, paramsHighPrice];
 	let availableLiquidityAsY = 1e36;
-	for (let price of prices) {
-		params2.price = price;
-		const tmp = getLiquidityPostLiquidationAsY(params2);
+	for (let params of scenarios) {
+		const tmp = getLiquidityPostLiquidationAsY(params);
 		availableLiquidityAsY = tmp < availableLiquidityAsY ? tmp : availableLiquidityAsY;
 	}
 	return availableLiquidityAsY;
 }
 
-function getMaxBorrowableXAndY(params) {
-	const {liquidationIncentive, liquidationFee, safetyMargin, liquidity, price, priceA, priceB, borrowAmountA, borrowAmountB} = params;
+function getMaxBorrowableXAndY(params, paramsLowPrice, paramsHighPrice) {
+	const {liquidationIncentive, liquidationFee, price, borrowAmountA, borrowAmountB} = params;
 	const liquidationPenalty = liquidationIncentive + liquidationFee;
-	const params2 = {...params};
-	const prices = [price / safetyMargin, price * safetyMargin];
+	const scenarios = [paramsLowPrice, paramsHighPrice];
 	let maxBorrowables = [1e36, 1e36];
-	for (let price of prices) {
-		params2.price = price;
-		const availableDebtValueAsY = getLiquidityPostLiquidationAsY(params2) / liquidationPenalty;
-		const maxBorrowable0 = borrowAmountA + availableDebtValueAsY / price;
+	for (let params of scenarios) {
+		const availableDebtValueAsY = getLiquidityPostLiquidationAsY(params) / liquidationPenalty;
+		const maxBorrowable0 = borrowAmountA + availableDebtValueAsY / params.price;
 		const maxBorrowable1 = borrowAmountB + availableDebtValueAsY;
 		maxBorrowables[0] = maxBorrowable0 < maxBorrowables[0] ? maxBorrowable0 : maxBorrowables[0];
 		maxBorrowables[1] = maxBorrowable1 < maxBorrowables[1] ? maxBorrowable1 : maxBorrowables[1];
@@ -120,25 +94,26 @@ contract('Collateral', function (accounts) {
 		await factory._setReservesManager(reservesManager, {from: reservesAdmin});
 	});
 	
+
 	[
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 20},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 0.4, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 0.16, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 2, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 4, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 10, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 40},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 40, borrowAmountB: 30},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 60, borrowAmountB: 40},
-		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.02, liquidity: 3000, price: 3334, priceA: 3000, priceB: 3500, borrowAmountA: 1.5, borrowAmountB: 2975.79},
-		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.02, liquidity: 200, price: 3334, priceA: 1000, priceB: 6000, borrowAmountA: 0.5, borrowAmountB: 2975.79},
-		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.02, liquidity: 10000, price: 3334, priceA: 3200, priceB: 3400, borrowAmountA: 0, borrowAmountB: 4100},
-		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 20, price: 0.168, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
-		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 30, price: 0.168, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
-		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 40, price: 0.11, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
-		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 40, price: 0.18, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
-		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 40, price: 0.3, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
-		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 40, price: 0.05, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, borrowAmountA: 20, borrowAmountB: 20},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 0.4, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 0.16, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 2, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 4, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 10, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, borrowAmountA: 20, borrowAmountB: 40},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, borrowAmountA: 40, borrowAmountB: 30},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, borrowAmountA: 60, borrowAmountB: 40},
+		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.02, liquidity: 120, price: 3334, borrowAmountA: 1.5, borrowAmountB: 2975.79},
+		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.02, liquidity: 120, price: 3334, borrowAmountA: 0.5, borrowAmountB: 2975.79},
+		{safetyMargin: 1.75, liquidationIncentive: 1.04, liquidationFee: 0.02, liquidity: 60, price: 3334, borrowAmountA: 0, borrowAmountB: 4100},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 5, price: 0.168, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 7, price: 0.168, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 7, price: 0.11, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 7, price: 0.18, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 7, price: 0.3, borrowAmountA: 10, borrowAmountB: 1},
+		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 7, price: 0.05, borrowAmountA: 10, borrowAmountB: 1},
 	].forEach((testCase) => {
 		describe(`Collateral tests for ${JSON.stringify(testCase)}`, () => {
 			let tokenizedCLPosition;
@@ -146,15 +121,33 @@ contract('Collateral', function (accounts) {
 			let borrowable0;
 			let borrowable1;
 			
-			const {safetyMargin, liquidationIncentive, liquidationFee, liquidity, price, priceA, priceB, borrowAmountA, borrowAmountB} = testCase;
+			const {safetyMargin, liquidationIncentive, liquidationFee, liquidity, price, borrowAmountA, borrowAmountB} = testCase;
 			const liquidationPenalty = liquidationIncentive + liquidationFee;
 					
-			const virtualX = getVirtualX(liquidity, price);
-			const virtualY = getVirtualY(liquidity, price);
-			const [realX, realY] = getRealXAndY(testCase);
+			const realXBN = bnMantissa(liquidity / 2).mul(_2_96).div(sqrtX96(price));
+			const realYBN = bnMantissa(liquidity / 2).mul(sqrtX96(price)).div(_2_96);
+			const realXLowPriceBN = realXBN.mul(sqrtX96(safetyMargin)).div(_2_96);
+			const realYLowPriceBN = realYBN.mul(_2_96).div(sqrtX96(safetyMargin));
+			const realXHighPriceBN = realXBN.mul(_2_96).div(sqrtX96(safetyMargin));
+			const realYHighPriceBN = realYBN.mul(sqrtX96(safetyMargin)).div(_2_96);
+			const realX = realXBN / 1e18;
+			const realY = realYBN / 1e18;
+			const realXLowPrice = realXLowPriceBN / 1e18;
+			const realYLowPrice = realYLowPriceBN / 1e18;
+			const realXHighPrice = realXHighPriceBN / 1e18;
+			const realYHighPrice = realYHighPriceBN / 1e18;
 			
-			const concentrationFactor = 1 / (1 - 1 / Math.sqrt(Math.sqrt(priceB / priceA)));
-			
+			testCase.realX = realX;
+			testCase.realY = realY;
+			const testCaseLowPrice = {...testCase};
+			const testCaseHighPrice = {...testCase};
+			testCaseLowPrice.price = price / safetyMargin; 
+			testCaseLowPrice.realX = realXLowPrice; 
+			testCaseLowPrice.realY = realYLowPrice; 
+			testCaseHighPrice.price = price * safetyMargin; 
+			testCaseHighPrice.realX = realXHighPrice; 
+			testCaseHighPrice.realY = realYHighPrice;
+						
 			before(async () => {
 				tokenizedCLPosition = await makeTokenizedCLPosition();
 				collateral = await Collateral.new();
@@ -169,47 +162,47 @@ contract('Collateral', function (accounts) {
 				
 				await collateral._setSafetyMarginSqrt(bnMantissa(Math.sqrt(safetyMargin)), {from: admin});
 				await collateral._setLiquidationIncentive(bnMantissa(liquidationIncentive), {from: admin});
-				await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});				
-				await tokenizedCLPosition.oraclePriceSqrtX96Harness(sqrtX96(price));
+				await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});
+				await tokenizedCLPosition.setPriceSqrtX96Harness(sqrtX96(price));
 			});
 			
 			beforeEach(async () => {
-				await tokenizedCLPosition.setPositionHarness(TOKEN_ID, bnMantissa(liquidity), sqrtX96(priceA), sqrtX96(priceB));
+				// k = x*y behaviour
+				await tokenizedCLPosition.setPositionHarness(
+					TOKEN_ID, 
+					realXLowPriceBN,
+					realYLowPriceBN,
+					realXBN,
+					realYBN,
+					realXHighPriceBN,
+					realYHighPriceBN
+				);
 				await tokenizedCLPosition.setOwnerHarness(collateral.address, TOKEN_ID);
 				await collateral.setOwnerHarness(borrower, TOKEN_ID);
 				await borrowable0.setBorrowBalanceHarness(TOKEN_ID, bnMantissa(borrowAmountA));
 				await borrowable1.setBorrowBalanceHarness(TOKEN_ID, bnMantissa(borrowAmountB));
 			});
 			
-			// test CLmath qua o in file a parte?
-
 			it(`getPositionObject`, async () => {
-				const positionObject = await collateral.getPositionObject(TOKEN_ID);
-				expectAlmostEqualMantissa(positionObject.liquidity, bnMantissa(liquidity));
-				expectAlmostEqualMantissa(positionObject.paSqrtX96, sqrtX96(priceA));
-				expectAlmostEqualMantissa(positionObject.pbSqrtX96, sqrtX96(priceB));
+				const positionObject = await collateral.getPositionObject.call(TOKEN_ID);
+				expectAlmostEqualMantissa(positionObject.priceSqrtX96, sqrtX96(price));
+				expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realX, realXLowPriceBN);
+				expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realY, realYLowPriceBN);
+				expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realX, realXBN);
+				expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realY, realYBN);
+				expectAlmostEqualMantissa(positionObject.realXYs.highestPrice.realX, realXHighPriceBN);
+				expectAlmostEqualMantissa(positionObject.realXYs.highestPrice.realY, realYHighPriceBN);
 				expectAlmostEqualMantissa(positionObject.debtX, bnMantissa(borrowAmountA));
 				expectAlmostEqualMantissa(positionObject.debtY, bnMantissa(borrowAmountB));
 				expectAlmostEqualMantissa(positionObject.liquidationPenalty, bnMantissa(liquidationPenalty));
 				expectAlmostEqualMantissa(positionObject.safetyMarginSqrt, bnMantissa(Math.sqrt(safetyMargin)));
 			});
-
-			it(`getVirtualX`, async () => {
-				expectAlmostEqualMantissa(bnMantissa(virtualX), await collateral.getVirtualX.call(TOKEN_ID));
-			});
-			it(`getVirtualY`, async () => {
-				expectAlmostEqualMantissa(bnMantissa(virtualY), await collateral.getVirtualY.call(TOKEN_ID));
-			});
-			it(`getRealX`, async () => {
-				expectAlmostEqualMantissa(bnMantissa(realX), await collateral.getRealX.call(TOKEN_ID));
-			});
-			it(`getRealY`, async () => {
-				expectAlmostEqualMantissa(bnMantissa(realY), await collateral.getRealY.call(TOKEN_ID));
-			});
 			
 			it(`getCollateralValue`, async () => {
-				const value = await collateral.getCollateralValueWithPrice.call(TOKEN_ID, sqrtX96(Math.sqrt(priceA * priceB)));
-				expectAlmostEqualMantissa(bnMantissa(liquidity / concentrationFactor), value);
+				const collateralValueAsY = realX * price + realY;
+				const collateralValue = await collateral.getCollateralValue.call(TOKEN_ID);
+				const valueY = await collateral.getValue.call(TOKEN_ID, 0, oneMantissa);
+				expectAlmostEqualMantissa(bnMantissa(valueY / 1e18 * collateralValueAsY), collateralValue);
 			});
 			
 			it(`getDebtValue`, async () => {
@@ -238,15 +231,15 @@ contract('Collateral', function (accounts) {
 				expectAlmostEqualMantissa(bnMantissa(collateralValue / collateralNeeded), await collateral.getPostLiquidationCollateralRatio.call(TOKEN_ID));
 			});
 			
-			it(`isLiquidatable`, async () => {
-				const availableLiquidityAsY = getAvailableLiquidityAsY(testCase);
+			it(`isLiquidatable`, async () => {				
+				const availableLiquidityAsY = getAvailableLiquidityAsY(testCaseLowPrice, testCaseHighPrice);
 				const isLiquidatable = availableLiquidityAsY < 0;
 				console.log(isLiquidatable)
 				expect(isLiquidatable).to.eq(await collateral.isLiquidatable.call(TOKEN_ID));
 			});
 			
 			it(`redeeming 0.01% fails if isLiquidatable`, async () => {
-				const availableLiquidityAsY = getAvailableLiquidityAsY(testCase);
+				const availableLiquidityAsY = getAvailableLiquidityAsY(testCaseLowPrice, testCaseHighPrice);
 				const isLiquidatable = availableLiquidityAsY < 0;
 				if (!isLiquidatable) {
 					await collateral.redeem.call(borrower, TOKEN_ID, bnMantissa(0.01 / 100), {from: borrower});
@@ -266,12 +259,13 @@ contract('Collateral', function (accounts) {
 			});
 
 			it(`canBorrow`, async () => {
-				const availableLiquidityAsY = getAvailableLiquidityAsY(testCase);
-				const [maxBorrowable0, maxBorrowable1] = getMaxBorrowableXAndY(testCase);
+				const availableLiquidityAsY = getAvailableLiquidityAsY(testCaseLowPrice, testCaseHighPrice);
+				const [maxBorrowable0, maxBorrowable1] = getMaxBorrowableXAndY(testCase, testCaseLowPrice, testCaseHighPrice);
 				
 				//const initTest = await collateral.canBorrowTest.call(TOKEN_ID, borrowable0.address, bnMantissa(borrowAmountA));
 				//const test1 = await collateral.canBorrowTest.call(TOKEN_ID, borrowable0.address, bnMantissa(maxBorrowable0));
 				//const test2 = await collateral.canBorrowTest.call(TOKEN_ID, borrowable1.address, bnMantissa(maxBorrowable1));
+				//console.log("maxBorrowable", maxBorrowable0, maxBorrowable1);
 				//console.log("initTest", initTest.liquidity1 / 1e18, initTest.liquidity2 / 1e18);
 				//console.log("test1", test1.liquidity1 / 1e18, test1.liquidity2 / 1e18);
 				//console.log("test2", test2.liquidity1 / 1e18, test2.liquidity2 / 1e18);
@@ -316,7 +310,6 @@ contract('Collateral', function (accounts) {
 			});
 			
 			it(`seize if is liquidatable`, async () => {
-				// CHECK EVERYTHING, EVEN UNAUTHORIZED AND reservesManager	
 				await expectRevert(
 					collateral.seize(TOKEN_ID, 0, address(0), "0x"),
 					"ImpermaxV3Collateral: UNAUTHORIZED"
@@ -324,70 +317,78 @@ contract('Collateral', function (accounts) {
 				if (await collateral.isLiquidatable.call(TOKEN_ID)) {
 					console.log("liquidate");
 					
+					let currentRealX = realX;
+					let currentRealY = realY;
+					let restructured = false;
+					
 					const repayAmount1 = await borrowable0.borrowBalance.call(TOKEN_ID);
 					if (repayAmount1 * 1 > 0) {
-						const realX = await collateral.getRealX.call(TOKEN_ID) / 1e18;
-						const realY = await collateral.getRealY.call(TOKEN_ID) / 1e18;
-						const totalLiquidity = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity / 1e18;
-						const seizeTokenId = await borrowable0.restructureBadDebtAndSeizeCollateral.call(TOKEN_ID, repayAmount1, liquidator, "0x");	
-						const feeTokenId = seizeTokenId * 1 + 1;
-						
-						const receipt = await borrowable0.restructureBadDebtAndSeizeCollateral(TOKEN_ID, repayAmount1, liquidator, "0x");
-						const seizeLiquidity = (await tokenizedCLPosition.position(seizeTokenId)).liquidity;
-						const feeLiquidity = (await tokenizedCLPosition.position(feeTokenId)).liquidity;
-						const liquidityAfter = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity;
-						
-						const collateralValueAsY = realX * price + realY;
+						const collateralValueAsY = currentRealX * price + currentRealY;
 						const debtValueAsY = borrowAmountA * price + borrowAmountB;
 						let repayValueAsY = repayAmount1 * price / 1e18;
 						if (collateralValueAsY < debtValueAsY * liquidationPenalty) {
 							repayValueAsY *= collateralValueAsY / (debtValueAsY * liquidationPenalty);
 						}
 						
-						const expectedSeizeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationIncentive;
-						const expectedFeeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationFee;
-						const expectedLiquidityAfter = totalLiquidity - expectedFeeLiquidity - expectedSeizeLiquidity;
+						const expectedSeizeRealX = currentRealX * repayValueAsY / collateralValueAsY * liquidationIncentive;
+						const expectedFeeRealX = currentRealX * repayValueAsY / collateralValueAsY * liquidationFee;
+						const expectedRealX = currentRealX - expectedFeeRealX - expectedSeizeRealX;
+						
+						const seizeTokenId = await borrowable0.restructureBadDebtAndSeizeCollateral.call(TOKEN_ID, repayAmount1, liquidator, "0x");	
+						const feeTokenId = seizeTokenId * 1 + 1;
+						
+						const receipt = await borrowable0.restructureBadDebtAndSeizeCollateral(TOKEN_ID, repayAmount1, liquidator, "0x");
+						const seizeRealX = (await tokenizedCLPosition.getPositionData.call(seizeTokenId, 0)).realXYs.currentPrice.realX;
+						const feeRealX = (await tokenizedCLPosition.getPositionData.call(feeTokenId, 0)).realXYs.currentPrice.realX;
+						const realXAfter = (await tokenizedCLPosition.getPositionData.call(TOKEN_ID, 0)).realXYs.currentPrice.realX;
 						
 						expect(await tokenizedCLPosition.ownerOf(seizeTokenId)).to.eq(liquidator);
-						if (expectedFeeLiquidity > 0) {
+						if (expectedFeeRealX > 0) {
 							expect(await tokenizedCLPosition.ownerOf(feeTokenId)).to.eq(collateral.address);
 							expect(await collateral.ownerOf(feeTokenId)).to.eq(reservesManager);
 						}
 						
-						expectAlmostEqualMantissa(seizeLiquidity, bnMantissa(expectedSeizeLiquidity));
-						expectAlmostEqualMantissa(feeLiquidity, bnMantissa(expectedFeeLiquidity));
-						expectAlmostEqualMantissa(liquidityAfter, bnMantissa(expectedLiquidityAfter));
+						expectAlmostEqualMantissa(seizeRealX, bnMantissa(expectedSeizeRealX));
+						expectAlmostEqualMantissa(feeRealX, bnMantissa(expectedFeeRealX));
+						expectAlmostEqualMantissa(realXAfter, bnMantissa(expectedRealX));
+						
+						currentRealY *= expectedRealX / currentRealX;
+						currentRealX = expectedRealX;
+						restructured = true;
 					}
 
 					const repayAmount2 = await borrowable1.borrowBalance.call(TOKEN_ID);	
 					if (repayAmount2 * 1 > 0 && await collateral.isLiquidatable.call(TOKEN_ID)) {
-						const realX = await collateral.getRealX.call(TOKEN_ID) / 1e18;
-						const realY = await collateral.getRealY.call(TOKEN_ID) / 1e18;
-						const totalLiquidity = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity / 1e18;
+						const collateralValueAsY = currentRealX * price + currentRealY;
+						let repayValueAsY = repayAmount2 / 1e18;
+						if (!restructured) {
+							const debtValueAsY = borrowAmountB;
+							if (collateralValueAsY < debtValueAsY * liquidationPenalty) {
+								repayValueAsY *= collateralValueAsY / (debtValueAsY * liquidationPenalty);
+							}
+						}
+						
+						const expectedSeizeRealX = currentRealX * repayValueAsY / collateralValueAsY * liquidationIncentive;
+						const expectedFeeRealX = currentRealX * repayValueAsY / collateralValueAsY * liquidationFee;
+						const expectedRealX = currentRealX - expectedFeeRealX - expectedSeizeRealX;
+									
 						const seizeTokenId = await borrowable1.restructureBadDebtAndSeizeCollateral.call(TOKEN_ID, repayAmount2, liquidator, "0x");	
 						const feeTokenId = seizeTokenId * 1 + 1;
 						
 						const receipt = await borrowable1.restructureBadDebtAndSeizeCollateral(TOKEN_ID, repayAmount2, liquidator, "0x");
-						const seizeLiquidity = (await tokenizedCLPosition.position(seizeTokenId)).liquidity;
-						const feeLiquidity = (await tokenizedCLPosition.position(feeTokenId)).liquidity;
-						const liquidityAfter = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity;
-						
-						const collateralValueAsY = realX * price + realY;
-						let repayValueAsY = repayAmount2 / 1e18;
-						
-						const expectedSeizeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationIncentive;
-						const expectedFeeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationFee;
-						const expectedLiquidityAfter = totalLiquidity - expectedFeeLiquidity - expectedSeizeLiquidity;
+						const seizeRealX = (await tokenizedCLPosition.getPositionData.call(seizeTokenId, 0)).realXYs.currentPrice.realX;
+						const feeRealX = (await tokenizedCLPosition.getPositionData.call(feeTokenId, 0)).realXYs.currentPrice.realX;
+						const realXAfter = (await tokenizedCLPosition.getPositionData.call(TOKEN_ID, 0)).realXYs.currentPrice.realX;
 						
 						expect(await tokenizedCLPosition.ownerOf(seizeTokenId)).to.eq(liquidator);
-						if (expectedFeeLiquidity > 0) {
+						if (expectedFeeRealX > 0) {
 							expect(await tokenizedCLPosition.ownerOf(feeTokenId)).to.eq(collateral.address);
 							expect(await collateral.ownerOf(feeTokenId)).to.eq(reservesManager);
 						}
 						
-						expectAlmostEqualMantissa(seizeLiquidity, bnMantissa(expectedSeizeLiquidity));
-						expectAlmostEqualMantissa(feeLiquidity, bnMantissa(expectedFeeLiquidity));
-						expectAlmostEqualMantissa(liquidityAfter, bnMantissa(expectedLiquidityAfter));
+						expectAlmostEqualMantissa(seizeRealX, bnMantissa(expectedSeizeRealX));
+						expectAlmostEqualMantissa(feeRealX, bnMantissa(expectedFeeRealX));
+						expectAlmostEqualMantissa(realXAfter, bnMantissa(expectedRealX));
 					}
 				} else {
 					await expectRevert(
@@ -424,10 +425,18 @@ contract('Collateral', function (accounts) {
 			await collateral._setSafetyMarginSqrt(bnMantissa(Math.sqrt(safetyMargin)), {from: admin});
 			await collateral._setLiquidationIncentive(bnMantissa(liquidationIncentive), {from: admin});
 			await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});				
-			await tokenizedCLPosition.oraclePriceSqrtX96Harness(sqrtX96(price));
+			await tokenizedCLPosition.setPriceSqrtX96Harness(sqrtX96(price));
 			
-			await tokenizedCLPosition.setOwnerHarness(user, TOKEN_ID);			
-			await tokenizedCLPosition.setPositionHarness(TOKEN_ID, bnMantissa(100), sqrtX96(1), sqrtX96(2));
+			await tokenizedCLPosition.setOwnerHarness(user, TOKEN_ID);		
+			await tokenizedCLPosition.setPositionHarness(
+				TOKEN_ID, 
+				bnMantissa(100),
+				bnMantissa(100),
+				bnMantissa(100),
+				bnMantissa(100),
+				bnMantissa(100),
+				bnMantissa(100)
+			);
 		});
 		
 		it(`mint fail if nft is not received`, async () => {
@@ -476,7 +485,7 @@ contract('Collateral', function (accounts) {
 		it(`redeem 60% fails`, async () => {
 			await tokenizedCLPosition.transferFrom(user, collateral.address, TOKEN_ID, {from:user});
 			await collateral.mint(user, TOKEN_ID);
-			await borrowable1.setBorrowBalanceHarness(TOKEN_ID, bnMantissa(5));
+			await borrowable1.setBorrowBalanceHarness(TOKEN_ID, bnMantissa(60));
 			await expectRevert(collateral.redeem(user, TOKEN_ID, bnMantissa(0.6), {from: user}), "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
 		});
 		

@@ -18,6 +18,10 @@ const { hexlify, keccak256, toUtf8Bytes } = require('ethers/utils');
 const { ecsign } = require('ethereumjs-util');
 
 const MockERC20 = artifacts.require('MockERC20');
+const MockUniswapV2Factory = artifacts.require('MockUniswapV2Factory');
+const MockUniswapV2Pair = artifacts.require('MockUniswapV2Pair');
+const MockOracle = artifacts.require('MockOracle');
+const TokenizedUniswapV2Position = artifacts.require('TokenizedUniswapV2Position');
 const MockTokenizedCLPosition = artifacts.require('MockTokenizedCLPosition');
 const BDeployer = artifacts.require('BDeployer');
 const CDeployer = artifacts.require('CDeployer');
@@ -47,11 +51,44 @@ async function makeErc20Token(opts = {}) {
 	return await ImpermaxERC20.new(name, symbol);
 }
 
-
 async function makeUniswapV2Factory(opts = {}) {
-	// TODO update with uniswap V3/V4
-	return address(1)
-	//return await MockUniswapV2Factory.new();
+	return await MockUniswapV2Factory.new();
+}
+
+async function makeUniswapV2Pair(opts = {}) {
+	const token0 = opts.token0 || await makeErc20Token(opts.t0);
+	const token1 = opts.token1 || await makeErc20Token(opts.t1);
+	const uniswapV2Pair = await MockUniswapV2Pair.new(token0.address, token1.address);
+	if (opts.withFactory) {
+		const uniswapV2Factory = opts.uniswapV2Factory || await makeUniswapV2Factory(opts);
+		await uniswapV2Factory.addPair(token0.address, token1.address, uniswapV2Pair.address);
+		return Object.assign(uniswapV2Pair, {obj: {token0, token1, uniswapV2Factory}}); 
+	}
+	else {
+		return Object.assign(uniswapV2Pair, {obj: {token0, token1}});
+	}
+}
+
+async function makeSimpleUniswapOracle(opts = {}) {
+	return await MockOracle.new();
+}
+
+async function makeTokenizedUniswapV2Position(opts = {}) {
+	const uniswapV2Pair = opts.uniswapV2Pair || await makeUniswapV2Pair({
+		t0: opts.t0, token0: opts.token0,
+		t1: opts.t1, token1: opts.token1,
+	});
+	const tokenizedUniswapV2Position = await TokenizedUniswapV2Position.new();
+	const simpleUniswapOracle = opts.simpleUniswapOracle || await makeSimpleUniswapOracle(opts);
+	await tokenizedUniswapV2Position._initialize(
+		"",
+		"",
+		uniswapV2Pair.address,
+		uniswapV2Pair.obj.token0.address,
+		uniswapV2Pair.obj.token1.address,
+		simpleUniswapOracle.address
+	)
+	return Object.assign(tokenizedUniswapV2Position, {obj: {uniswapV2Pair, simpleUniswapOracle}});
 }
 
 async function makeTokenizedCLPosition(opts = {}) {
@@ -280,6 +317,9 @@ module.exports = {
 	
 	makeErc20Token,
 	makeUniswapV2Factory,
+	makeUniswapV2Pair,
+	makeSimpleUniswapOracle,
+	makeTokenizedUniswapV2Position,
 	makeTokenizedCLPosition,
 	//makeBDeployer,
 	//makeCDeployer,
