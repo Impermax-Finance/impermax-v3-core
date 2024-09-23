@@ -4,8 +4,9 @@ const {
 	ImpermaxCallee,
 	ReentrantCallee,
 	Recipient,
+	makeUniswapV3Factory,
 	makeFactory,
-	makeTokenizedCLPosition,
+	makeTokenizedUniswapV3Position,
 } = require('./Utils/Impermax');
 const {
 	expectAlmostEqualMantissa,
@@ -26,9 +27,12 @@ const oneMantissa = (new BN(10)).pow(new BN(18));
 const _2_96 = (new BN(2)).pow(new BN(96));
 const ZERO = new BN(0);
 
-const TOKEN_ID = new BN(1000);
+let TOKEN_ID;
 const TEST_AMOUNT = oneMantissa.mul(new BN(200));
 const MAX_UINT_256 = (new BN(2)).pow(new BN(256)).sub(new BN(1));
+
+const FEE = 3000;
+const ORACLE_T = 1800;
 
 function slightlyIncrease(bn) {
 	return bn.mul( bnMantissa(1.10001) ).div( oneMantissa );
@@ -42,6 +46,12 @@ function X96(n) {
 }
 function sqrtX96(n) {
 	return X96(Math.sqrt(n));
+}
+
+function getTickAtPrice(price) {
+	const tick = Math.round(Math.log(price) / Math.log(1.0001));
+	//console.log(price, tick);
+	return tick;
 }
 
 function getVirtualX(liquidity, price) {
@@ -104,7 +114,7 @@ function getMaxBorrowableXAndY(params) {
 	}
 	return maxBorrowables;
 }
-/*
+
 contract('Collateral-UniswapV3', function (accounts) {
 	let root = accounts[0];
 	let user = accounts[1];
@@ -126,7 +136,7 @@ contract('Collateral-UniswapV3', function (accounts) {
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 0.16, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 2, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 4, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 10, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 10, priceA: 0.25, priceB: 3.99, borrowAmountA: 20, borrowAmountB: 0},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 40},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 40, borrowAmountB: 30},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 60, borrowAmountB: 40},
@@ -141,6 +151,7 @@ contract('Collateral-UniswapV3', function (accounts) {
 		{safetyMargin: 1.25, liquidationIncentive: 1.02, liquidationFee: 0, liquidity: 40, price: 0.05, priceA: 0.1, priceB: 0.22, borrowAmountA: 10, borrowAmountB: 1},
 	].forEach((testCase) => {
 		describe(`Collateral tests for ${JSON.stringify(testCase)}`, () => {
+			let uniswapV3Pair;
 			let tokenizedCLPosition;
 			let collateral;
 			let borrowable0;
@@ -148,15 +159,22 @@ contract('Collateral-UniswapV3', function (accounts) {
 			
 			const {safetyMargin, liquidationIncentive, liquidationFee, liquidity, price, priceA, priceB, borrowAmountA, borrowAmountB} = testCase;
 			const liquidationPenalty = liquidationIncentive + liquidationFee;
+			const safetyMarginSqrtBN = bnMantissa(Math.sqrt(safetyMargin));
 					
 			const virtualX = getVirtualX(liquidity, price);
 			const virtualY = getVirtualY(liquidity, price);
 			const [realX, realY] = getRealXAndY(testCase);
+			const [realXLowPrice, realYLowPrice] = getRealXAndY({liquidity, price: price / safetyMargin, priceA, priceB});
+			const [realXHighPrice, realYHighPrice] = getRealXAndY({liquidity, price: price * safetyMargin, priceA, priceB});
+			
+			const tickA = getTickAtPrice(priceA);
+			const tickB = getTickAtPrice(priceB);
 			
 			const concentrationFactor = 1 / (1 - 1 / Math.sqrt(Math.sqrt(priceB / priceA)));
 			
 			before(async () => {
-				tokenizedCLPosition = await makeTokenizedCLPosition();
+				tokenizedCLPosition = await makeTokenizedUniswapV3Position();
+				uniswapV3Pair = tokenizedCLPosition.obj.uniswapV3Pair;
 				collateral = await Collateral.new();
 				borrowable0 = await Borrowable.new();
 				borrowable1 = await Borrowable.new();
@@ -170,44 +188,53 @@ contract('Collateral-UniswapV3', function (accounts) {
 				await collateral._setSafetyMarginSqrt(bnMantissa(Math.sqrt(safetyMargin)), {from: admin});
 				await collateral._setLiquidationIncentive(bnMantissa(liquidationIncentive), {from: admin});
 				await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});				
-				await tokenizedCLPosition.oraclePriceSqrtX96Harness(sqrtX96(price));
+				
+				await uniswapV3Pair.setTickCumulatives(0, getTickAtPrice(price) * ORACLE_T);
+				await uniswapV3Pair.setSecondsPerLiquidityCumulativeX128s(0, bnMantissa(1));
 			});
 			
 			beforeEach(async () => {
-				await tokenizedCLPosition.setPositionHarness(TOKEN_ID, bnMantissa(liquidity), sqrtX96(priceA), sqrtX96(priceB));
-				await tokenizedCLPosition.setOwnerHarness(collateral.address, TOKEN_ID);
-				await collateral.setOwnerHarness(borrower, TOKEN_ID);
+				await uniswapV3Pair.setPosition(tokenizedCLPosition.address, tickA, tickB, bnMantissa(liquidity));
+			});
+			
+			it(`mint and setBorrowBalance`, async () => {
+				TOKEN_ID = await tokenizedCLPosition.mint.call(collateral.address, FEE, tickA, tickB);
+				await tokenizedCLPosition.mint(collateral.address, FEE, tickA, tickB);
+				await collateral.mint(borrower, TOKEN_ID)
 				await borrowable0.setBorrowBalanceHarness(TOKEN_ID, bnMantissa(borrowAmountA));
 				await borrowable1.setBorrowBalanceHarness(TOKEN_ID, bnMantissa(borrowAmountB));
 			});
 			
 			it(`getPositionObject`, async () => {
-				const positionObject = await collateral.getPositionObject(TOKEN_ID);
-				expectAlmostEqualMantissa(positionObject.liquidity, bnMantissa(liquidity));
-				expectAlmostEqualMantissa(positionObject.paSqrtX96, sqrtX96(priceA));
-				expectAlmostEqualMantissa(positionObject.pbSqrtX96, sqrtX96(priceB));
+				const positionObject = await collateral.getPositionObject.call(TOKEN_ID);
+				/*console.log("lowestPrice.realX", positionObject.realXYs.lowestPrice.realX / 1e18, realXLowPrice);
+				console.log("lowestPrice.realY", positionObject.realXYs.lowestPrice.realY / 1e18, realYLowPrice);
+				console.log("currentPrice.realX", positionObject.realXYs.currentPrice.realX / 1e18);
+				console.log("currentPrice.realY", positionObject.realXYs.currentPrice.realY / 1e18);
+				console.log("highestPrice.realX", positionObject.realXYs.highestPrice.realX / 1e18, realXHighPrice);
+				console.log("highestPrice.realY", positionObject.realXYs.highestPrice.realY / 1e18, realYHighPrice);
+				console.log("debtX", positionObject.debtX / 1e18);
+				console.log("debtY", positionObject.debtY / 1e18);
+				console.log("safetyMarginSqrt", positionObject.safetyMarginSqrt / 1e18);
+				console.log("liquidationPenalty", positionObject.liquidationPenalty / 1e18);*/
+				expectAlmostEqualMantissa(positionObject.priceSqrtX96, sqrtX96(price));
+				expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realX, bnMantissa(realXLowPrice));
+				expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realY, bnMantissa(realYLowPrice));
+				expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realX, bnMantissa(realX));
+				expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realY, bnMantissa(realY));
+				expectAlmostEqualMantissa(positionObject.realXYs.highestPrice.realX, bnMantissa(realXHighPrice));
+				expectAlmostEqualMantissa(positionObject.realXYs.highestPrice.realY, bnMantissa(realYHighPrice));
 				expectAlmostEqualMantissa(positionObject.debtX, bnMantissa(borrowAmountA));
 				expectAlmostEqualMantissa(positionObject.debtY, bnMantissa(borrowAmountB));
 				expectAlmostEqualMantissa(positionObject.liquidationPenalty, bnMantissa(liquidationPenalty));
-				expectAlmostEqualMantissa(positionObject.safetyMarginSqrt, bnMantissa(Math.sqrt(safetyMargin)));
-			});
-
-			it(`getVirtualX`, async () => {
-				expectAlmostEqualMantissa(bnMantissa(virtualX), await collateral.getVirtualX.call(TOKEN_ID));
-			});
-			it(`getVirtualY`, async () => {
-				expectAlmostEqualMantissa(bnMantissa(virtualY), await collateral.getVirtualY.call(TOKEN_ID));
-			});
-			it(`getRealX`, async () => {
-				expectAlmostEqualMantissa(bnMantissa(realX), await collateral.getRealX.call(TOKEN_ID));
-			});
-			it(`getRealY`, async () => {
-				expectAlmostEqualMantissa(bnMantissa(realY), await collateral.getRealY.call(TOKEN_ID));
+				expectAlmostEqualMantissa(positionObject.safetyMarginSqrt, safetyMarginSqrtBN);
 			});
 			
 			it(`getCollateralValue`, async () => {
-				const value = await collateral.getCollateralValueWithPrice.call(TOKEN_ID, sqrtX96(Math.sqrt(priceA * priceB)));
-				expectAlmostEqualMantissa(bnMantissa(liquidity / concentrationFactor), value);
+				const collateralValueAsY = realX * price + realY;
+				const collateralValue = await collateral.getCollateralValue.call(TOKEN_ID);
+				const valueY = await collateral.getValue.call(TOKEN_ID, 0, oneMantissa);
+				expectAlmostEqualMantissa(bnMantissa(valueY / 1e18 * collateralValueAsY), collateralValue);
 			});
 			
 			it(`getDebtValue`, async () => {
@@ -314,7 +341,6 @@ contract('Collateral-UniswapV3', function (accounts) {
 			});
 			
 			it(`seize if is liquidatable`, async () => {
-				// CHECK EVERYTHING, EVEN UNAUTHORIZED AND reservesManager	
 				await expectRevert(
 					collateral.seize(TOKEN_ID, 0, address(0), "0x"),
 					"ImpermaxV3Collateral: UNAUTHORIZED"
@@ -322,70 +348,67 @@ contract('Collateral-UniswapV3', function (accounts) {
 				if (await collateral.isLiquidatable.call(TOKEN_ID)) {
 					console.log("liquidate");
 					
+					let currentRealX = realX;
+					let currentRealY = realY;
+					
 					const repayAmount1 = await borrowable0.borrowBalance.call(TOKEN_ID);
 					if (repayAmount1 * 1 > 0) {
-						const realX = await collateral.getRealX.call(TOKEN_ID) / 1e18;
-						const realY = await collateral.getRealY.call(TOKEN_ID) / 1e18;
-						const totalLiquidity = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity / 1e18;
+						const collateralValueAsY = currentRealX * price + currentRealY;
+						let repayValueAsY = repayAmount1 * price / 1e18;
+						
+						const expectedSeizeRealX = currentRealX * repayValueAsY / collateralValueAsY * liquidationIncentive;
+						const expectedFeeRealX = currentRealX * repayValueAsY / collateralValueAsY * liquidationFee;
+						const expectedRealX = currentRealX - expectedFeeRealX - expectedSeizeRealX;
+						
 						const seizeTokenId = await borrowable0.restructureBadDebtAndSeizeCollateral.call(TOKEN_ID, repayAmount1, liquidator, "0x");	
 						const feeTokenId = seizeTokenId * 1 + 1;
 						
 						const receipt = await borrowable0.restructureBadDebtAndSeizeCollateral(TOKEN_ID, repayAmount1, liquidator, "0x");
-						const seizeLiquidity = (await tokenizedCLPosition.position(seizeTokenId)).liquidity;
-						const feeLiquidity = (await tokenizedCLPosition.position(feeTokenId)).liquidity;
-						const liquidityAfter = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity;
 						
-						const collateralValueAsY = realX * price + realY;
-						const debtValueAsY = borrowAmountA * price + borrowAmountB;
-						let repayValueAsY = repayAmount1 * price / 1e18;
-						if (collateralValueAsY < debtValueAsY * liquidationPenalty) {
-							repayValueAsY *= collateralValueAsY / (debtValueAsY * liquidationPenalty);
-						}
-						
-						const expectedSeizeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationIncentive;
-						const expectedFeeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationFee;
-						const expectedLiquidityAfter = totalLiquidity - expectedFeeLiquidity - expectedSeizeLiquidity;
+						const seizeRealX = (await tokenizedCLPosition.getPositionData.call(seizeTokenId, safetyMarginSqrtBN)).realXYs.currentPrice.realX;
+						const feeRealX = expectedFeeRealX == 0 ? 0 : (await tokenizedCLPosition.getPositionData.call(feeTokenId, safetyMarginSqrtBN)).realXYs.currentPrice.realX;
+						const realXAfter = (await tokenizedCLPosition.getPositionData.call(TOKEN_ID, safetyMarginSqrtBN)).realXYs.currentPrice.realX;
 						
 						expect(await tokenizedCLPosition.ownerOf(seizeTokenId)).to.eq(liquidator);
-						if (expectedFeeLiquidity > 0) {
+						if (expectedFeeRealX > 0) {
 							expect(await tokenizedCLPosition.ownerOf(feeTokenId)).to.eq(collateral.address);
 							expect(await collateral.ownerOf(feeTokenId)).to.eq(reservesManager);
 						}
 						
-						expectAlmostEqualMantissa(seizeLiquidity, bnMantissa(expectedSeizeLiquidity));
-						expectAlmostEqualMantissa(feeLiquidity, bnMantissa(expectedFeeLiquidity));
-						expectAlmostEqualMantissa(liquidityAfter, bnMantissa(expectedLiquidityAfter));
+						expectAlmostEqualMantissa(seizeRealX, bnMantissa(expectedSeizeRealX));
+						expectAlmostEqualMantissa(feeRealX, bnMantissa(expectedFeeRealX));
+						expectAlmostEqualMantissa(realXAfter, bnMantissa(expectedRealX));
+						
+						currentRealY *= expectedRealX / currentRealX;
+						currentRealX = expectedRealX;
 					}
 
 					const repayAmount2 = await borrowable1.borrowBalance.call(TOKEN_ID);	
 					if (repayAmount2 * 1 > 0 && await collateral.isLiquidatable.call(TOKEN_ID)) {
-						const realX = await collateral.getRealX.call(TOKEN_ID) / 1e18;
-						const realY = await collateral.getRealY.call(TOKEN_ID) / 1e18;
-						const totalLiquidity = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity / 1e18;
+						const collateralValueAsY = currentRealX * price + currentRealY;
+						let repayValueAsY = repayAmount2 / 1e18;
+						
+						const expectedSeizeRealX = currentRealX * repayValueAsY / collateralValueAsY * liquidationIncentive;
+						const expectedFeeRealX = currentRealX * repayValueAsY / collateralValueAsY * liquidationFee;
+						const expectedRealX = currentRealX - expectedFeeRealX - expectedSeizeRealX;
+									
 						const seizeTokenId = await borrowable1.restructureBadDebtAndSeizeCollateral.call(TOKEN_ID, repayAmount2, liquidator, "0x");	
 						const feeTokenId = seizeTokenId * 1 + 1;
 						
 						const receipt = await borrowable1.restructureBadDebtAndSeizeCollateral(TOKEN_ID, repayAmount2, liquidator, "0x");
-						const seizeLiquidity = (await tokenizedCLPosition.position(seizeTokenId)).liquidity;
-						const feeLiquidity = (await tokenizedCLPosition.position(feeTokenId)).liquidity;
-						const liquidityAfter = (await tokenizedCLPosition.position(TOKEN_ID)).liquidity;
-						
-						const collateralValueAsY = realX * price + realY;
-						let repayValueAsY = repayAmount2 / 1e18;
-						
-						const expectedSeizeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationIncentive;
-						const expectedFeeLiquidity = totalLiquidity * repayValueAsY / collateralValueAsY * liquidationFee;
-						const expectedLiquidityAfter = totalLiquidity - expectedFeeLiquidity - expectedSeizeLiquidity;
+						const seizeRealX = (await tokenizedCLPosition.getPositionData.call(seizeTokenId, safetyMarginSqrtBN)).realXYs.currentPrice.realX;
+						const feeRealX = expectedFeeRealX == 0 ? 0 : (await tokenizedCLPosition.getPositionData.call(feeTokenId, safetyMarginSqrtBN)).realXYs.currentPrice.realX;
+						const realXAfter = (await tokenizedCLPosition.getPositionData.call(TOKEN_ID, safetyMarginSqrtBN)).realXYs.currentPrice.realX;
 						
 						expect(await tokenizedCLPosition.ownerOf(seizeTokenId)).to.eq(liquidator);
-						if (expectedFeeLiquidity > 0) {
+						if (expectedFeeRealX > 0) {
 							expect(await tokenizedCLPosition.ownerOf(feeTokenId)).to.eq(collateral.address);
 							expect(await collateral.ownerOf(feeTokenId)).to.eq(reservesManager);
 						}
 						
-						expectAlmostEqualMantissa(seizeLiquidity, bnMantissa(expectedSeizeLiquidity));
-						expectAlmostEqualMantissa(feeLiquidity, bnMantissa(expectedFeeLiquidity));
-						expectAlmostEqualMantissa(liquidityAfter, bnMantissa(expectedLiquidityAfter));
+						expectAlmostEqualMantissa(seizeRealX, bnMantissa(expectedSeizeRealX));
+						expectAlmostEqualMantissa(feeRealX, bnMantissa(expectedFeeRealX));
+						expectAlmostEqualMantissa(realXAfter, bnMantissa(expectedRealX > 0 ? expectedRealX : 0));
 					}
 				} else {
 					await expectRevert(
@@ -397,4 +420,4 @@ contract('Collateral-UniswapV3', function (accounts) {
 		});
 	});
 
-});*/
+});

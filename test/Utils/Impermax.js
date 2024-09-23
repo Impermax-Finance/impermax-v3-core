@@ -20,8 +20,13 @@ const { ecsign } = require('ethereumjs-util');
 const MockERC20 = artifacts.require('MockERC20');
 const MockUniswapV2Factory = artifacts.require('MockUniswapV2Factory');
 const MockUniswapV2Pair = artifacts.require('MockUniswapV2Pair');
+const MockUniswapV3Factory = artifacts.require('MockUniswapV3Factory');
+const MockUniswapV3Pair = artifacts.require('MockUniswapV3Pair');
 const MockOracle = artifacts.require('MockOracle');
+const TokenizedUniswapV2Factory = artifacts.require('TokenizedUniswapV2Factory');
 const TokenizedUniswapV2Position = artifacts.require('TokenizedUniswapV2Position');
+const TokenizedUniswapV3Factory = artifacts.require('TokenizedUniswapV3Factory');
+const TokenizedUniswapV3Position = artifacts.require('TokenizedUniswapV3Position');
 const MockTokenizedCLPosition = artifacts.require('MockTokenizedCLPosition');
 const BDeployer = artifacts.require('BDeployer');
 const CDeployer = artifacts.require('CDeployer');
@@ -69,10 +74,64 @@ async function makeUniswapV2Pair(opts = {}) {
 	}
 }
 
+async function makeUniswapV3Factory(opts = {}) {
+	return await MockUniswapV3Factory.new();
+}
+
+async function makeUniswapV3Pair(opts = {}) {
+	const token0 = opts.token0 || await makeErc20Token(opts.t0);
+	const token1 = opts.token1 || await makeErc20Token(opts.t1);
+	const fee = opts.fee || 3000;
+	const uniswapV3Pair = await MockUniswapV3Pair.new(token0.address, token1.address);
+	if (opts.withFactory) {
+		const uniswapV3Factory = opts.uniswapV3Factory || await makeUniswapV3Factory(opts);
+		await uniswapV3Factory.addPool(token0.address, token1.address, fee, uniswapV3Pair.address);
+		return Object.assign(uniswapV3Pair, {obj: {token0, token1, uniswapV3Factory}}); 
+	}
+	return Object.assign(uniswapV3Pair, {obj: {token0, token1}});
+}
+
 async function makeSimpleUniswapOracle(opts = {}) {
 	return await MockOracle.new();
 }
 
+async function makeTokenizedUniswapV2Factory(opts = {}) {
+	const simpleUniswapOracle = opts.simpleUniswapOracle || await makeSimpleUniswapOracle(opts);
+	const tokenizedUniswapV2Factory = await TokenizedUniswapV2Factory.new(simpleUniswapOracle.address);
+	return Object.assign(tokenizedUniswapV2Factory, {obj: {simpleUniswapOracle}});
+}
+
+async function makeTokenizedUniswapV2Position(opts = {}) {
+	const uniswapV2Pair = opts.uniswapV2Pair || await makeUniswapV2Pair({
+		t0: opts.t0, token0: opts.token0,
+		t1: opts.t1, token1: opts.token1,
+	});
+	const tokenizedUniswapV2Factory = opts.factory || await makeTokenizedUniswapV2Factory(opts);
+	const address = await tokenizedUniswapV2Factory.createNFTLP.call(uniswapV2Pair.address);
+	await tokenizedUniswapV2Factory.createNFTLP(uniswapV2Pair.address);
+	return Object.assign(await TokenizedUniswapV2Position.at(address), {obj: {uniswapV2Pair, tokenizedUniswapV2Factory}});
+}
+
+async function makeTokenizedUniswapV3Factory(opts = {}) {
+	const uniswapV3Factory = opts.uniswapV3Factory || await makeUniswapV3Factory(opts);;
+	const tokenizedUniswapV3Factory = await TokenizedUniswapV3Factory.new(uniswapV3Factory.address);
+	return Object.assign(tokenizedUniswapV3Factory, {obj: {uniswapV3Factory}});
+}
+
+async function makeTokenizedUniswapV3Position(opts = {}) {
+	const tokenizedUniswapV3Factory = await makeTokenizedUniswapV3Factory(opts);
+	const uniswapV3Pair = opts.uniswapV3Pair || await makeUniswapV3Pair({
+		t0: opts.t0, token0: opts.token0,
+		t1: opts.t1, token1: opts.token1,
+		withFactory: true,
+		uniswapV3Factory: tokenizedUniswapV3Factory.obj.uniswapV3Factory,
+	});
+	const address = await tokenizedUniswapV3Factory.createNFTLP.call(uniswapV3Pair.obj.token0.address, uniswapV3Pair.obj.token1.address);
+	await tokenizedUniswapV3Factory.createNFTLP(uniswapV3Pair.obj.token0.address, uniswapV3Pair.obj.token1.address);
+	return Object.assign(await TokenizedUniswapV3Position.at(address), {obj: {uniswapV3Pair, tokenizedUniswapV3Factory}});
+}
+
+/*
 async function makeTokenizedUniswapV2Position(opts = {}) {
 	const uniswapV2Pair = opts.uniswapV2Pair || await makeUniswapV2Pair({
 		t0: opts.t0, token0: opts.token0,
@@ -81,8 +140,6 @@ async function makeTokenizedUniswapV2Position(opts = {}) {
 	const tokenizedUniswapV2Position = await TokenizedUniswapV2Position.new();
 	const simpleUniswapOracle = opts.simpleUniswapOracle || await makeSimpleUniswapOracle(opts);
 	await tokenizedUniswapV2Position._initialize(
-		"",
-		"",
 		uniswapV2Pair.address,
 		uniswapV2Pair.obj.token0.address,
 		uniswapV2Pair.obj.token1.address,
@@ -91,6 +148,21 @@ async function makeTokenizedUniswapV2Position(opts = {}) {
 	return Object.assign(tokenizedUniswapV2Position, {obj: {uniswapV2Pair, simpleUniswapOracle}});
 }
 
+async function makeTokenizedUniswapV3Position(opts = {}) {
+	const uniswapV3Pair = opts.uniswapV3Pair || await makeUniswapV3Pair({
+		t0: opts.t0, token0: opts.token0,
+		t1: opts.t1, token1: opts.token1,
+		withFactory: true,
+	});
+	const tokenizedUniswapV3Position = await TokenizedUniswapV3Position.new();
+	await tokenizedUniswapV3Position._initialize(
+		uniswapV3Pair.obj.uniswapV3Factory.address,
+		uniswapV3Pair.obj.token0.address,
+		uniswapV3Pair.obj.token1.address,
+	)
+	return Object.assign(tokenizedUniswapV3Position, {obj: {uniswapV3Pair}});
+}
+*/
 async function makeTokenizedCLPosition(opts = {}) {
 	const token0 = opts.token0 || await makeErc20Token(opts.t0);
 	const token1 = opts.token1 || await makeErc20Token(opts.t1);
@@ -318,8 +390,11 @@ module.exports = {
 	makeErc20Token,
 	makeUniswapV2Factory,
 	makeUniswapV2Pair,
+	makeUniswapV3Factory,
+	makeUniswapV3Pair,
 	makeSimpleUniswapOracle,
 	makeTokenizedUniswapV2Position,
+	makeTokenizedUniswapV3Position,
 	makeTokenizedCLPosition,
 	//makeBDeployer,
 	//makeCDeployer,

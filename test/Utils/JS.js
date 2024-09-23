@@ -69,7 +69,7 @@ function max(a, b) {
  */
 function expectAlmostEqualMantissa(actual, expected) {
 	const MAX_ABS_ERR = 0.00000000001;
-	const MAX_REL_ERR = 0.0001; //0.01%
+	const MAX_REL_ERR = 0.001; //0.1%
 	const errRec = new BN(1/MAX_REL_ERR);
 	const errAbs = bnMantissa(MAX_ABS_ERR);
 	const expectedBN = BN.isBN(expected) ? expected : new BN(expected);

@@ -28,7 +28,6 @@ function slightlyDecrease(bn) {
 }
 
 const MockERC20 = artifacts.require('MockERC20');
-const MockUniswapV2Factory = artifacts.require('MockUniswapV2Factory');
 const MockUniswapV2Pair = artifacts.require('MockUniswapV2Pair');
 const MockOracle = artifacts.require('MockOracle');
 const BDeployer = artifacts.require('BDeployer');
@@ -46,7 +45,7 @@ contract('Highlevel-UniswapV2', function (accounts) {
 	const liquidator = accounts[5];		
 	const reservesManager = accounts[6];		
 
-	let tokenizedPosition, factory, uniswapV2Pair, token0, token1, collateral, borrowable0, borrowable1;
+	let tokenizedPosition, factory, simpleUniswapOracle, uniswapV2Pair, token0, token1, collateral, borrowable0, borrowable1;
 	let TOKEN_ID;
 		
 	async function testAccountLiquidity(percentage) {
@@ -115,7 +114,8 @@ contract('Highlevel-UniswapV2', function (accounts) {
 		await token0.mint(lender, lendAmount0);
 		await token1.mint(lender, lendAmount1);
 		await uniswapV2Pair.mint(borrower, collateralAmount);
-		await tokenizedPosition.obj.simpleUniswapOracle.setPrice(uniswapV2Pair.address, uq112(price0A / price1A));
+		simpleUniswapOracle = tokenizedPosition.obj.tokenizedUniswapV2Factory.obj.simpleUniswapOracle;
+		await simpleUniswapOracle.setPrice(uniswapV2Pair.address, uq112(price0A / price1A));
 		await uniswapV2Pair.setReserves(bnMantissa(price1A * 1000), bnMantissa(price0A * 1000));
 		await uniswapV2Pair.setTotalSupply(bnMantissa(2000));
 		//console.log(receiptCollateral.receipt.gasUsed + ' createCollateral');
@@ -216,13 +216,13 @@ contract('Highlevel-UniswapV2', function (accounts) {
 	});
 	
 	it('liquidation fail', async () => {
-		await tokenizedPosition.obj.simpleUniswapOracle.setPrice(uniswapV2Pair.address, uq112(price0B / price1B));
+		await simpleUniswapOracle.setPrice(uniswapV2Pair.address, uq112(price0B / price1B));
 		await testAccountLiquidity(expectedAccountLiquidityC.mul(oneMantissa).div(collateralAmount));
 		await expectRevert(borrowable0.liquidate(TOKEN_ID, 0, liquidator, "0x"), 'ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL');
 	});
 	
 	it('liquidate token0', async () => {
-		await tokenizedPosition.obj.simpleUniswapOracle.setPrice(uniswapV2Pair.address, uq112(price0C / price1C));
+		await simpleUniswapOracle.setPrice(uniswapV2Pair.address, uq112(price0C / price1C));
 		const currentBorrowAmount0 = (await borrowable0.borrowBalance(TOKEN_ID));
 		await token0.mint(liquidator, currentBorrowAmount0);
 		await token0.transfer(borrowable0.address, currentBorrowAmount0, {from: liquidator});
