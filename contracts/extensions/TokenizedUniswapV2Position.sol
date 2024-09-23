@@ -32,8 +32,6 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 		
 	// called once by the factory at the time of deployment
 	function _initialize (
-		string calldata _name,
-		string calldata _symbol,
 		address _underlying, 
 		address _token0, 
 		address _token1,
@@ -41,7 +39,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 	) external {
 		require(factory == address(0), "TokenizedUniswapV2Position: FACTORY_ALREADY_SET"); // sufficient check
 		factory = msg.sender;
-		_setName(_name, _symbol);
+		_setName("Tokenized Uniswap V2", "NFT-UNI-V2");
 		underlying = _underlying;
 		token0 = _token0;
 		token1 = _token1;
@@ -50,11 +48,9 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
  
 	/*** Position Math ***/
 	
-	function oraclePriceSqrtX96() public returns (uint160) {
+	function oraclePriceSqrtX96() public returns (uint256) {
 		(uint256 twapPrice112x112,) = ISimpleUniswapOracle(simpleUniswapOracle).getResult(underlying);
-		uint256 twapPriceSqrtX96 = Math.sqrt(twapPrice112x112.mul(Q32)).mul(Q24);
-		assert(twapPriceSqrtX96 < Q160);
-		return uint160(twapPriceSqrtX96);
+		return Math.sqrt(twapPrice112x112.mul(Q32)).mul(Q24);
 	}
 	
 	function getAdjustFactor() internal view returns (uint256) {
@@ -99,7 +95,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 		_mint(to, newTokenId);
 		liquidity[newTokenId] = mintAmount;
 		
-		emit Mint(to, mintAmount, newTokenId);
+		emit UpdatePositionLiquidity(newTokenId, mintAmount);
 	}
 
 	// this low-level function should be called from another contract
@@ -111,29 +107,28 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 		_burn(tokenId);
 		_safeTransfer(to, redeemAmount);
 		
-		emit Redeem(to, redeemAmount, tokenId);
+		emit UpdatePositionLiquidity(tokenId, 0);
 	}
 	
-	function split(uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId) {
-		require(percentage <= 1e18, "TokenizedUniswapV2Position: ABOVE_100_PERCENT");
+	function split(uint256 tokenId, uint256 percentage) external nonReentrant returns (uint256 newTokenId) {
+		require(percentage < 1e18, "TokenizedUniswapV2Position: ABOVE_100_PERCENT");
 		address owner = ownerOf[tokenId];
 		_checkAuthorized(owner, msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
 		
 		uint256 oldLiquidity = liquidity[tokenId];		
 		uint256 newTokenLiquidity = uint256(oldLiquidity).mul(percentage).div(1e18);
-		liquidity[tokenId] = oldLiquidity - newTokenLiquidity;
+		uint256 oldTokenLiquidity = oldLiquidity - newTokenLiquidity;
+		liquidity[tokenId] = oldTokenLiquidity;
 		newTokenId = positionLength++;
 		_mint(owner, newTokenId);
-		getApproved[newTokenId] = getApproved[tokenId]; // needed for splitting and redeeming in a single transaction
 		liquidity[newTokenId] = newTokenLiquidity;
-
-		emit Split(tokenId, percentage, newTokenId);
+		
+		emit UpdatePositionLiquidity(tokenId, oldTokenLiquidity);
+		emit UpdatePositionLiquidity(newTokenId, newTokenLiquidity);
 	}
 	
-	function join(uint256 tokenId, uint256 tokenToJoin) external {
-		_checkAuthorized(ownerOf[tokenId], msg.sender, tokenId);
-		_approve(address(0), tokenId, address(0)); // reset approval
+	function join(uint256 tokenId, uint256 tokenToJoin) external nonReentrant {
 		_checkAuthorized(ownerOf[tokenToJoin], msg.sender, tokenToJoin);
 		
 		uint256 initialLiquidity = liquidity[tokenId];
@@ -141,8 +136,9 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 		liquidity[tokenId] = initialLiquidity.add(liquidityToAdd);
 		liquidity[tokenToJoin] = 0;
 		_burn(tokenToJoin);
-
-		emit Join(tokenId, tokenToJoin);
+		
+		emit UpdatePositionLiquidity(tokenId, initialLiquidity.add(liquidityToAdd));
+		emit UpdatePositionLiquidity(tokenToJoin, 0);
 	}
 	
 	/*** Utilities ***/
@@ -154,7 +150,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 		require(success && (data.length == 0 || abi.decode(data, (bool))), "TokenizedUniswapV2Position: TRANSFER_FAILED");
 	}
 	
-	function _update() internal {
+	function _updateBalance() internal {
 		totalBalance = IERC20(underlying).balanceOf(address(this));
 	}
 	
@@ -170,6 +166,6 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 	// update totalBalance with current balance
 	modifier update() {
 		_;
-		_update();
+		_updateBalance();
 	}
 }

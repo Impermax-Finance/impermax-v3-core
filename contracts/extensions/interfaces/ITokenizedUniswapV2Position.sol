@@ -20,31 +20,25 @@ interface ITokenizedUniswapV2Position {
 		uint256 priceSqrtX96,
 		INFTLP.RealXYs memory realXYs
 	);
-		
-	event Split(address indexed owner, uint tokenId, uint percentage, uint newTokenId);
-	event Join(address indexed owner, uint tokenId, uint tokenToJoin);
 	
 	function join(uint256 tokenIdFrom, uint256 tokenIdTo) external;
 	function split(uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId);
 	
 	// ITokenizedUniswapV2Position
 	
-	function factory() external returns (address);
-	function simpleUniswapOracle() external returns (address);
-	function underlying() external returns (address);
-	function totalBalance() external returns (uint256);
+	function factory() external view returns (address);
+	function simpleUniswapOracle() external view returns (address);
+	function underlying() external view returns (address);
+	function totalBalance() external view returns (uint256);
 	
-	function liquidity(uint256) external returns (uint256);
-	function positionLength() external returns (uint256);
+	function liquidity(uint256) external view returns (uint256);
+	function positionLength() external view returns (uint256);
 	
-	function oraclePriceSqrtX96() external returns (uint160);
+	function oraclePriceSqrtX96() external returns (uint256);
 	
-	event Mint(address indexed to, uint mintAmount, uint newTokenId);
-	event Redeem(address indexed to, uint redeemAmount, uint tokenId);
+	event UpdatePositionLiquidity(uint256 indexed tokenId, uint256 liquidity);
 
 	function _initialize (
-		string calldata _name,
-		string calldata _symbol,
 		address _underlying, 
 		address _token0, 
 		address _token1,
