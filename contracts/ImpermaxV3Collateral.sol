@@ -44,6 +44,7 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	function redeem(address to, uint256 tokenId, uint256 percentage, bytes memory data) public nonReentrant returns (uint256 newTokenId) {
 		require(percentage <= 1e18, "ImpermaxV3Collateral: PERCENTAGE_ABOVE_100");
 		_checkAuthorized(ownerOf[tokenId], msg.sender, tokenId);
+		_approve(address(0), tokenId, address(0)); // reset approval
 				
 		// optimistically redeem
 		if (percentage == 1e18) {

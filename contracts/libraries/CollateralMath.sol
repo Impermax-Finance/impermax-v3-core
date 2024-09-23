@@ -42,7 +42,7 @@ library CollateralMath {
 	}
 	
     function safeInt256(uint256 n) internal pure returns (int256) {
-        require(n < 2**255, "Impermax: SAFE112");
+        require(n < 2**255, "Impermax: SAFE_INT");
         return int256(n);
     }
 	

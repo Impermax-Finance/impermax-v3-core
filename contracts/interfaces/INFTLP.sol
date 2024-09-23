@@ -31,9 +31,6 @@ interface INFTLP {
 	
 	// Interactions
 	
-	event Split(uint tokenId, uint percentage, uint newTokenId);
-	event Join(uint tokenId, uint tokenToJoin);
-	
 	function split(uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId);
 	function join(uint256 tokenIdFrom, uint256 tokenIdTo) external;
 }
