@@ -1,7 +1,7 @@
 pragma solidity >=0.5.0;
 
 interface IFactory {
-	event LendingPoolInitialized(address indexed tokenizedCLPosition, address indexed token0, address indexed token1,
+	event LendingPoolInitialized(address indexed nftlp, address indexed token0, address indexed token1,
 		address collateral, address borrowable0, address borrowable1, uint lendingPoolId);
 	event NewPendingAdmin(address oldPendingAdmin, address newPendingAdmin);
 	event NewAdmin(address oldAdmin, address newAdmin);
@@ -15,23 +15,23 @@ interface IFactory {
 	function reservesPendingAdmin() external view returns (address);
 	function reservesManager() external view returns (address);
 
-	function getLendingPool(address tokenizedCLPosition) external view returns (
+	function getLendingPool(address nftlp) external view returns (
 		bool initialized, 
 		uint24 lendingPoolId, 
 		address collateral, 
 		address borrowable0, 
 		address borrowable1
 	);
-	function allLendingPools(uint) external view returns (address tokenizedCLPosition);
+	function allLendingPools(uint) external view returns (address nftlp);
 	function allLendingPoolsLength() external view returns (uint);
 	
 	function bDeployer() external view returns (address);
 	function cDeployer() external view returns (address);
 
-	function createCollateral(address tokenizedCLPosition) external returns (address collateral);
-	function createBorrowable0(address tokenizedCLPosition) external returns (address borrowable0);
-	function createBorrowable1(address tokenizedCLPosition) external returns (address borrowable1);
-	function initializeLendingPool(address tokenizedCLPosition) external;
+	function createCollateral(address nftlp) external returns (address collateral);
+	function createBorrowable0(address nftlp) external returns (address borrowable0);
+	function createBorrowable1(address nftlp) external returns (address borrowable1);
+	function initializeLendingPool(address nftlp) external;
 
 	function _setPendingAdmin(address newPendingAdmin) external;
 	function _acceptAdmin() external;

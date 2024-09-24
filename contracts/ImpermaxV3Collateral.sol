@@ -67,7 +67,6 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	function redeem(address to, uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId) {
 		return redeem(to, tokenId, percentage, "");
 	}
-
 	
 	/*** Collateral ***/
 	

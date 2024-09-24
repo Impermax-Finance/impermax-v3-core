@@ -63,7 +63,7 @@ interface ICollateral {
 	function _initialize (
 		string calldata _name,
 		string calldata _symbol,
-		address _tokenizedCLPosition, 
+		address _underlying, 
 		address _borrowable0, 
 		address _borrowable1
 	) external;
