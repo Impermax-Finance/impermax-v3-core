@@ -41,13 +41,14 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		emit Mint(to, tokenId);
 	}
 
-	function redeem(address to, uint256 tokenId, uint256 percentage, bytes memory data) public nonReentrant returns (uint256 newTokenId) {
+	function redeem(address to, uint256 tokenId, uint256 percentage, bytes memory data) public nonReentrant returns (uint256 redeemTokenId) {
 		require(percentage <= 1e18, "ImpermaxV3Collateral: PERCENTAGE_ABOVE_100");
 		_checkAuthorized(ownerOf[tokenId], msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
 				
 		// optimistically redeem
 		if (percentage == 1e18) {
+			redeemTokenId = tokenId;
 			_burn(tokenId);
 			INFTLP(underlying).safeTransferFrom(address(this), to, tokenId, data);
 			
@@ -55,16 +56,16 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 			require(IBorrowable(borrowable0).borrowBalance(tokenId) == 0, "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
 			require(IBorrowable(borrowable1).borrowBalance(tokenId) == 0, "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
 		} else {
-			newTokenId = INFTLP(underlying).split(tokenId, percentage);
-			INFTLP(underlying).safeTransferFrom(address(this), to, newTokenId, data);
+			redeemTokenId = INFTLP(underlying).split(tokenId, percentage);
+			INFTLP(underlying).safeTransferFrom(address(this), to, redeemTokenId, data);
 			
 			// finally check that the position is not left underwater
 			require(!isLiquidatable(tokenId), "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
 		}
 		
-		emit Redeem(to, tokenId, percentage, newTokenId);
+		emit Redeem(to, tokenId, percentage, redeemTokenId);
 	}
-	function redeem(address to, uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId) {
+	function redeem(address to, uint256 tokenId, uint256 percentage) external returns (uint256 redeemTokenId) {
 		return redeem(to, tokenId, percentage, "");
 	}
 	

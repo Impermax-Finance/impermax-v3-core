@@ -25,8 +25,8 @@ interface ICollateral {
 	/* Collateral */
 	
 	event Mint(address indexed to, uint tokenId);
-	event Redeem(address indexed to, uint tokenId, uint percentage, uint newTokenId);
-	event Seize(address indexed to, uint tokenId, uint percentage, uint newTokenId);
+	event Redeem(address indexed to, uint tokenId, uint percentage, uint redeemTokenId);
+	event Seize(address indexed to, uint tokenId, uint percentage, uint redeemTokenId);
 	event RestructureBadDebt(uint tokenId, uint postLiquidationCollateralRatio);
 	
 	function underlying() external view returns (address);
@@ -39,8 +39,8 @@ interface ICollateral {
 	function liquidationPenalty() external view returns (uint);
 
 	function mint(address to, uint256 tokenId) external;
-	function redeem(address to, uint256 tokenId, uint256 percentage, bytes calldata data) external returns (uint newTokenId);
-	function redeem(address to, uint256 tokenId, uint256 percentage) external returns (uint newTokenId);
+	function redeem(address to, uint256 tokenId, uint256 percentage, bytes calldata data) external returns (uint redeemTokenId);
+	function redeem(address to, uint256 tokenId, uint256 percentage) external returns (uint redeemTokenId);
 	function isLiquidatable(uint tokenId) external returns (bool);
 	function isUnderwater(uint tokenId) external returns (bool);
 	function canBorrow(uint tokenId, address borrowable, uint accountBorrows) external returns (bool);
