@@ -89,7 +89,6 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 	function mint(address to) external nonReentrant update returns (uint256 newTokenId) {
 		uint256 balance = IERC20(underlying).balanceOf(address(this));
 		uint256 mintAmount = balance.sub(totalBalance);
-		require(mintAmount > 0, "TokenizedUniswapV2Position: MINT_AMOUNT_ZERO");
 		
 		newTokenId = positionLength++;
 		_mint(to, newTokenId);

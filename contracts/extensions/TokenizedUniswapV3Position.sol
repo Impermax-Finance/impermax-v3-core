@@ -111,7 +111,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		(uint256 feeCollectedX, uint256 feeCollectedY) = _getFeeCollected(position, pool);
 	
 		require(safetyMarginSqrt >= 1e18, "TokenizedUniswapV3Position: INVALID_SAFETY_MARGIN");
-		require(position.liquidity > 0, "TokenizedUniswapV3Position: UNINITIALIZED_POSITION");
+		require(ownerOf[tokenId] != address(0), "TokenizedUniswapV3Position: UNINITIALIZED_POSITION");
 		UniswapV3CollateralMath.PositionObject memory positionObject = UniswapV3CollateralMath.newPosition(
 			position.liquidity,
 			position.tickLower.getSqrtRatioAtTick(),
@@ -139,7 +139,6 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		bytes32 hash = UniswapV3Position.getHash(address(this), tickLower, tickUpper);
 		(uint balance, uint256 fg0, uint256 fg1,,) = IUniswapV3Pool(pool).positions(hash);
 		uint liquidity = balance.sub(totalBalance[fee][tickLower][tickUpper]);
-		require(liquidity > 0, "TokenizedUniswapV3Position: MINT_AMOUNT_ZERO");
 		
 		newTokenId = positionLength++;
 		_mint(to, newTokenId);		
@@ -157,13 +156,6 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		emit MintPosition(newTokenId, fee, tickLower, tickUpper);
 		emit UpdatePositionLiquidity(newTokenId, liquidity);
 		emit UpdatePositionFeeGrowthInside(newTokenId, fg0, fg1);
-		
-		/* TODO reimplement this? (could be useful for AC)
-		if(totalSupply == 0) {
-			// permanently lock the first MINIMUM_LIQUIDITY tokens
-			mintTokens = mintTokens.sub(MINIMUM_LIQUIDITY);
-			_mint(address(0), MINIMUM_LIQUIDITY);
-		} */
 	}
 
 	// this low-level function should be called from another contract
