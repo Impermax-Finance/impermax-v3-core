@@ -23,6 +23,17 @@ contract ReentrantCallee is IImpermaxCallee, IERC721Receiver {
 		else if (i == 7) IBorrowable(msg.sender).restructureDebt(0, 0);
 		else if (i == 8) IBorrowable(msg.sender).underlying();
 	}
+	
+    function impermaxRedeem(address sender, uint256 tokenId, uint256 redeemTokenId, bytes calldata data) external {
+		sender; tokenId; redeemTokenId;
+		address a = address(this);
+		(uint i) = abi.decode(data, (uint));
+		require(i != 0, "TEST");
+		if (i == 1) ICollateral(msg.sender).mint(a, 0);
+		else if (i == 2) ICollateral(msg.sender).redeem(a, 0, 0);
+		else if (i == 3) ICollateral(msg.sender).seize(0, 0, a, data);
+		else if (i == 4) ICollateral(msg.sender).restructureBadDebt(0);
+	}
 
 	function onERC721Received(
         address operator,

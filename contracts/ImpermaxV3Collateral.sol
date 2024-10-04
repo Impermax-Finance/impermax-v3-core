@@ -4,6 +4,7 @@ pragma experimental ABIEncoderV2;
 import "./CSetter.sol";
 import "./interfaces/IBorrowable.sol";
 import "./interfaces/ICollateral.sol";
+import "./interfaces/IImpermaxCallee.sol";
 import "./interfaces/IFactory.sol";
 import "./interfaces/INFTLP.sol";
 import "./libraries/CollateralMath.sol";
@@ -50,14 +51,16 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		if (percentage == 1e18) {
 			redeemTokenId = tokenId;
 			_burn(tokenId);
-			INFTLP(underlying).safeTransferFrom(address(this), to, tokenId, data);
+			INFTLP(underlying).safeTransferFrom(address(this), to, redeemTokenId);
+			if (data.length > 0) IImpermaxCallee(to).impermaxRedeem(msg.sender, tokenId, redeemTokenId, data);
 			
 			// finally check that the position is not left underwater
 			require(IBorrowable(borrowable0).borrowBalance(tokenId) == 0, "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
 			require(IBorrowable(borrowable1).borrowBalance(tokenId) == 0, "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
 		} else {
 			redeemTokenId = INFTLP(underlying).split(tokenId, percentage);
-			INFTLP(underlying).safeTransferFrom(address(this), to, redeemTokenId, data);
+			INFTLP(underlying).safeTransferFrom(address(this), to, redeemTokenId);
+			if (data.length > 0) IImpermaxCallee(to).impermaxRedeem(msg.sender, tokenId, redeemTokenId, data);
 			
 			// finally check that the position is not left underwater
 			require(!isLiquidatable(tokenId), "ImpermaxV3Collateral: INSUFFICIENT_LIQUIDITY");
