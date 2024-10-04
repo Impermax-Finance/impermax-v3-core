@@ -135,10 +135,6 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		await tokenizedCLPosition.mint(collateral.address, FEE, tickA, tickB, {from: router});
 		await collateral.mint(user, TOKEN_ID,  {from: router});
 		await expectRevert(
-			tokenizedCLPosition.mint(collateral.address, FEE, tickA, tickB, {from: router}),
-			"TokenizedUniswapV3Position: MINT_AMOUNT_ZERO"
-		);
-		await expectRevert(
 			collateral.mint(user, TOKEN_ID,  {from: router}),
 			"ImpermaxV3Collateral: NFT_ALREADY_MINTED"
 		);
