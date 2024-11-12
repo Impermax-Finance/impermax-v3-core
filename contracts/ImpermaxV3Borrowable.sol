@@ -76,8 +76,9 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 			accountBorrows = accountBorrowsPrior.add(increaseAmount);
 			borrowSnapshot.principal = safe112(accountBorrows);
 			borrowSnapshot.interestIndex = _borrowIndex;
-			_totalBorrows = uint(totalBorrows).add(increaseAmount);	
+			_totalBorrows = uint(totalBorrows).add(increaseAmount);
 			totalBorrows = safe112(_totalBorrows);
+			require(_totalBorrows <= debtCeiling, "ImpermaxV3Borrowable: TOTAL_BORROWS_ABOVE_DEBT_CEILING");
 		}
 		else {
 			BorrowSnapshot storage borrowSnapshot = borrowBalances[tokenId];

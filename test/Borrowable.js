@@ -163,11 +163,13 @@ contract('Borrowable', function (accounts) {
 		
 		before(async () => {
 			borrowable = await Borrowable.new();
+			factory = await makeFactory({admin});		
 			underlying = await makeErc20Token();
 			collateral = await Collateral.new();
 			recipient = await Recipient.new();
 			receiver = (await ImpermaxCallee.new(recipient.address, underlying.address)).address;
 			borrowTracker = await MockBorrowTracker.new();
+			await borrowable.setFactoryHarness(factory.address);	
 			await borrowable.setUnderlyingHarness(underlying.address);
 			await borrowable.setCollateralHarness(collateral.address);
 			await borrowable.setBorrowTracker(borrowTracker.address);
@@ -187,10 +189,21 @@ contract('Borrowable', function (accounts) {
 			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '1', '0x'), 'ImpermaxV3Borrowable: BORROW_NOT_ALLOWED');
 		});
 
+		it(`fail if above debt ceiling`, async () => {
+			await underlying.setBalanceHarness(borrowable.address, borrowAmount);
+			await borrowable.sync();
+			await borrowable.borrowApprove(root, borrowAmount, {from: borrower});
+			await borrowable._setDebtCeiling(borrowAmount.sub(new BN(1)), {from: admin});
+			await collateral.setMaxBorrowable(TOKEN_ID, borrowable.address, borrowAmount);
+			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, borrowAmount, '0x'), 'ImpermaxV3Borrowable: TOTAL_BORROWS_ABOVE_DEBT_CEILING');
+		});
+
 		it(`borrow succeds with enough collateral`, async () => {
 			const repayAmount = ZERO;
 			const maxBorrowableNew = borrowAmount; // TODO update in fucntion
+			await borrowable._setDebtCeiling(borrowAmount, {from: admin});
 			const result = await makeBorrow({borrowAmount, repayAmount, maxBorrowableNew});
+			await borrowable._setDebtCeiling(borrowAmount.mul(new BN(2)), {from: admin});
 			expect(result).to.eq(true);
 		});
 
