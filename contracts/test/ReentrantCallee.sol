@@ -9,7 +9,7 @@ contract ReentrantCallee is IImpermaxCallee, IERC721Receiver {
 	
 	constructor () public {}
 
-	function impermaxBorrow(address sender, uint256 tokenId, uint borrowAmount, bytes calldata data) external {
+	function impermaxV3Borrow(address sender, uint256 tokenId, uint borrowAmount, bytes calldata data) external {
 		sender; tokenId; borrowAmount;
 		address a = address(this);
 		(uint i) = abi.decode(data, (uint));
@@ -24,7 +24,7 @@ contract ReentrantCallee is IImpermaxCallee, IERC721Receiver {
 		else if (i == 8) IBorrowable(msg.sender).underlying();
 	}
 	
-    function impermaxRedeem(address sender, uint256 tokenId, uint256 redeemTokenId, bytes calldata data) external {
+    function impermaxV3Redeem(address sender, uint256 tokenId, uint256 redeemTokenId, bytes calldata data) external {
 		sender; tokenId; redeemTokenId;
 		address a = address(this);
 		(uint i) = abi.decode(data, (uint));

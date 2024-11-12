@@ -111,7 +111,7 @@ contract('BAllowance', function (accounts) {
 				value: TEST_AMOUNT,
 				deadline: MAX_UINT_256,
 				private_key: otherForEip712PK,
-			}), 'Impermax: INVALID_SIGNATURE'
+			}), 'ImpermaxERC20: INVALID_SIGNATURE'
 		);				
 		await expectRevert(
 			sendBorrowPermit({
@@ -121,7 +121,7 @@ contract('BAllowance', function (accounts) {
 				value: TEST_AMOUNT,
 				deadline: new BN(1577836800), //jan 1, 2020
 				private_key: userForEip712PK,
-			}), 'Impermax: EXPIRED'
+			}), 'ImpermaxERC20: EXPIRED'
 		);
 	});
 });

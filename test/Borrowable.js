@@ -652,13 +652,13 @@ contract('Borrowable', function (accounts) {
 		});
 		
 		it(`borrow reentrancy`, async () => {
-			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [1])), 'Impermax: REENTERED');
-			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [2])), 'Impermax: REENTERED');
-			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [3])), 'Impermax: REENTERED');
-			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [4])), 'Impermax: REENTERED');
-			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [5])), 'Impermax: REENTERED');
-			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [6])), 'Impermax: REENTERED');
-			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [7])), 'Impermax: REENTERED');
+			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [1])), 'PoolToken: REENTERED');
+			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [2])), 'PoolToken: REENTERED');
+			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [3])), 'PoolToken: REENTERED');
+			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [4])), 'PoolToken: REENTERED');
+			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [5])), 'PoolToken: REENTERED');
+			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [6])), 'PoolToken: REENTERED');
+			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [7])), 'PoolToken: REENTERED');
 			await expectRevert(borrowable.borrow(TOKEN_ID, receiver, '0', encode(['uint'], [0])), 'TEST');
 		});
 	});

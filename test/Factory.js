@@ -26,8 +26,8 @@ function getCreate2Address(create2Inputs) {
 	return address(keccak256(sanitizedInputs).slice(-40));
 }
 
-function getCollateralAddress(deployerAddress, factoryAddress, tokenizedCLPositionAddress) {
-	const salt = keccak256(encodePacked(['address', 'address'], [factoryAddress, tokenizedCLPositionAddress]));
+function getCollateralAddress(deployerAddress, factoryAddress, nftlpAddress) {
+	const salt = keccak256(encodePacked(['address', 'address'], [factoryAddress, nftlpAddress]));
 	console.log('Collateral bytecode: ' + keccak256(CollateralProduction.bytecode));
 	return getCreate2Address([
 		'0xff',
@@ -37,8 +37,8 @@ function getCollateralAddress(deployerAddress, factoryAddress, tokenizedCLPositi
 	]);
 }
 
-function getBorrowableAddress(deployerAddress, factoryAddress, tokenizedCLPositionAddress, index) {
-	const salt = keccak256(encodePacked(['address', 'address', 'uint8'], [factoryAddress, tokenizedCLPositionAddress, index]));
+function getBorrowableAddress(deployerAddress, factoryAddress, nftlpAddress, index) {
+	const salt = keccak256(encodePacked(['address', 'address', 'uint8'], [factoryAddress, nftlpAddress, index]));
 	console.log('Borrowable bytecode: ' + keccak256(BorrowableProduction.bytecode));
 	return getCreate2Address([
 		'0xff',
@@ -73,7 +73,7 @@ contract('Factory', function (accounts) {
 	});
 	
 	describe('create lending pool', () => {
-		let factory, tokenizedCLPosition1, tokenizedCLPosition2, tokenizedCLPosition3;
+		let factory, nftlp1, nftlp2, nftlp3;
 		let ca, ba, fa;
 		let collateral1, borrowable01, borrowable11;
 		let collateral2, borrowable02, borrowable12;
@@ -81,74 +81,74 @@ contract('Factory', function (accounts) {
 		before(async () => {
 			factory = await makeFactory();
 			ca = factory.obj.cDeployer.address; ba = factory.obj.bDeployer.address; fa = factory.address;
-			tokenizedCLPosition1 = await makeTokenizedCLPosition({
+			nftlp1 = await makeTokenizedCLPosition({
 				t0: {symbol: 'ETH'},
 				t1: {symbol: 'UNI'},
 			});
-			tokenizedCLPosition2 = await makeTokenizedCLPosition();
-			tokenizedCLPosition3 = await makeTokenizedCLPosition();
+			nftlp2 = await makeTokenizedCLPosition();
+			nftlp3 = await makeTokenizedCLPosition();
 		});
 		it('first contract deploy also create lendingPool', async () => {
-			await factory.obj.checkLendingPool(tokenizedCLPosition1, {lendingPoolId: 0});
-			await factory.obj.checkLendingPool(tokenizedCLPosition2, {lendingPoolId: 0});
-			await factory.obj.checkLendingPool(tokenizedCLPosition3, {lendingPoolId: 0});
-			collateral1 = await factory.createCollateral.call(tokenizedCLPosition1.address);
-			await factory.createCollateral(tokenizedCLPosition1.address);
-			borrowable02 = await factory.createBorrowable0.call(tokenizedCLPosition2.address);
-			await factory.createBorrowable0(tokenizedCLPosition2.address);
-			borrowable13 = await factory.createBorrowable1.call(tokenizedCLPosition3.address);
-			await factory.createBorrowable1(tokenizedCLPosition3.address);
-			await factory.obj.checkLendingPool(tokenizedCLPosition1, {lendingPoolId: 1, collateral: collateral1});
-			await factory.obj.checkLendingPool(tokenizedCLPosition2, {lendingPoolId: 2, borrowable0: borrowable02});
-			await factory.obj.checkLendingPool(tokenizedCLPosition3, {lendingPoolId: 3, borrowable1: borrowable13});
+			await factory.obj.checkLendingPool(nftlp1, {lendingPoolId: 0});
+			await factory.obj.checkLendingPool(nftlp2, {lendingPoolId: 0});
+			await factory.obj.checkLendingPool(nftlp3, {lendingPoolId: 0});
+			collateral1 = await factory.createCollateral.call(nftlp1.address);
+			await factory.createCollateral(nftlp1.address);
+			borrowable02 = await factory.createBorrowable0.call(nftlp2.address);
+			await factory.createBorrowable0(nftlp2.address);
+			borrowable13 = await factory.createBorrowable1.call(nftlp3.address);
+			await factory.createBorrowable1(nftlp3.address);
+			await factory.obj.checkLendingPool(nftlp1, {lendingPoolId: 1, collateral: collateral1});
+			await factory.obj.checkLendingPool(nftlp2, {lendingPoolId: 2, borrowable0: borrowable02});
+			await factory.obj.checkLendingPool(nftlp3, {lendingPoolId: 3, borrowable1: borrowable13});
 		});
 		it('collateral and borrowable addresses can be calculated offchain', () => {
-			expect(collateral1.toLowerCase()).to.eq(getCollateralAddress(ca, fa, tokenizedCLPosition1.address));
-			expect(borrowable02.toLowerCase()).to.eq(getBorrowableAddress(ba, fa, tokenizedCLPosition2.address, 0));
-			expect(borrowable13.toLowerCase()).to.eq(getBorrowableAddress(ba, fa, tokenizedCLPosition3.address, 1));
+			expect(collateral1.toLowerCase()).to.eq(getCollateralAddress(ca, fa, nftlp1.address));
+			expect(borrowable02.toLowerCase()).to.eq(getBorrowableAddress(ba, fa, nftlp2.address, 0));
+			expect(borrowable13.toLowerCase()).to.eq(getBorrowableAddress(ba, fa, nftlp3.address, 1));
 		});
 		it('collateral and borrowable addresses are dependent on factory', () => {
-			expect(getCollateralAddress(ca, fa, tokenizedCLPosition1.address)).to.not.eq(
-				getCollateralAddress(ca, root, tokenizedCLPosition1.address)
+			expect(getCollateralAddress(ca, fa, nftlp1.address)).to.not.eq(
+				getCollateralAddress(ca, root, nftlp1.address)
 			);
-			expect(getBorrowableAddress(ba, fa, tokenizedCLPosition2.address, 0)).to.not.eq(
-				getBorrowableAddress(ba, root, tokenizedCLPosition2.address, 0)
+			expect(getBorrowableAddress(ba, fa, nftlp2.address, 0)).to.not.eq(
+				getBorrowableAddress(ba, root, nftlp2.address, 0)
 			);
 		});
 		it('revert if already exists', async () => {
-			await expectRevert(factory.createCollateral(tokenizedCLPosition1.address), "Impermax: ALREADY_EXISTS");
-			await expectRevert(factory.createBorrowable0(tokenizedCLPosition2.address), "Impermax: ALREADY_EXISTS");
-			await expectRevert(factory.createBorrowable1(tokenizedCLPosition3.address), "Impermax: ALREADY_EXISTS");			
+			await expectRevert(factory.createCollateral(nftlp1.address), "Impermax: ALREADY_EXISTS");
+			await expectRevert(factory.createBorrowable0(nftlp2.address), "Impermax: ALREADY_EXISTS");
+			await expectRevert(factory.createBorrowable1(nftlp3.address), "Impermax: ALREADY_EXISTS");			
 		});
 		it('second contract deploy reuse lendingPool', async () => {
-			borrowable01 = await factory.createBorrowable0.call(tokenizedCLPosition1.address);
-			await factory.createBorrowable0(tokenizedCLPosition1.address);
-			borrowable12 = await factory.createBorrowable1.call(tokenizedCLPosition2.address);
-			await factory.createBorrowable1(tokenizedCLPosition2.address);
-			collateral3 = await factory.createCollateral.call(tokenizedCLPosition3.address);
-			await factory.createCollateral(tokenizedCLPosition3.address);
-			await factory.obj.checkLendingPool(tokenizedCLPosition1, {lendingPoolId: 1, borrowable0: borrowable01});
-			await factory.obj.checkLendingPool(tokenizedCLPosition2, {lendingPoolId: 2, borrowable1: borrowable12});
-			await factory.obj.checkLendingPool(tokenizedCLPosition3, {lendingPoolId: 3, collateral: collateral3});
+			borrowable01 = await factory.createBorrowable0.call(nftlp1.address);
+			await factory.createBorrowable0(nftlp1.address);
+			borrowable12 = await factory.createBorrowable1.call(nftlp2.address);
+			await factory.createBorrowable1(nftlp2.address);
+			collateral3 = await factory.createCollateral.call(nftlp3.address);
+			await factory.createCollateral(nftlp3.address);
+			await factory.obj.checkLendingPool(nftlp1, {lendingPoolId: 1, borrowable0: borrowable01});
+			await factory.obj.checkLendingPool(nftlp2, {lendingPoolId: 2, borrowable1: borrowable12});
+			await factory.obj.checkLendingPool(nftlp3, {lendingPoolId: 3, collateral: collateral3});
 		}); 
 		it('initialize revert if not all three contracts are deployed', async () => {
-			await expectRevert(factory.initializeLendingPool(tokenizedCLPosition1.address), "Impermax: BORROWABLE1_NOT_CREATED");
-			await expectRevert(factory.initializeLendingPool(tokenizedCLPosition2.address), "Impermax: COLLATERALIZABLE_NOT_CREATED");
-			await expectRevert(factory.initializeLendingPool(tokenizedCLPosition3.address), "Impermax: BORROWABLE0_NOT_CREATED");
+			await expectRevert(factory.initializeLendingPool(nftlp1.address), "Impermax: BORROWABLE1_NOT_CREATED");
+			await expectRevert(factory.initializeLendingPool(nftlp2.address), "Impermax: COLLATERALIZABLE_NOT_CREATED");
+			await expectRevert(factory.initializeLendingPool(nftlp3.address), "Impermax: BORROWABLE0_NOT_CREATED");
 		}); 
 		it('third contract deploy reuse lendingPool', async () => {
-			borrowable11 = await factory.createBorrowable1.call(tokenizedCLPosition1.address);
-			await factory.createBorrowable1(tokenizedCLPosition1.address);
-			collateral2 = await factory.createCollateral.call(tokenizedCLPosition2.address);
-			await factory.createCollateral(tokenizedCLPosition2.address);
-			borrowable03 = await factory.createBorrowable0.call(tokenizedCLPosition3.address);
-			await factory.createBorrowable0(tokenizedCLPosition3.address);
-			await factory.obj.checkLendingPool(tokenizedCLPosition1, {lendingPoolId: 1, borrowable1: borrowable11});
-			await factory.obj.checkLendingPool(tokenizedCLPosition2, {lendingPoolId: 2, collateral: collateral2});
-			await factory.obj.checkLendingPool(tokenizedCLPosition3, {lendingPoolId: 3, borrowable0: borrowable03});
+			borrowable11 = await factory.createBorrowable1.call(nftlp1.address);
+			await factory.createBorrowable1(nftlp1.address);
+			collateral2 = await factory.createCollateral.call(nftlp2.address);
+			await factory.createCollateral(nftlp2.address);
+			borrowable03 = await factory.createBorrowable0.call(nftlp3.address);
+			await factory.createBorrowable0(nftlp3.address);
+			await factory.obj.checkLendingPool(nftlp1, {lendingPoolId: 1, borrowable1: borrowable11});
+			await factory.obj.checkLendingPool(nftlp2, {lendingPoolId: 2, collateral: collateral2});
+			await factory.obj.checkLendingPool(nftlp3, {lendingPoolId: 3, borrowable0: borrowable03});
 		});
 		it('only the factory can initialize PoolTokens', async () => {
-			const lendingPool = await factory.getLendingPool(tokenizedCLPosition1.address);
+			const lendingPool = await factory.getLendingPool(nftlp1.address);
 			await expectRevert((await CollateralProduction.at(lendingPool.collateral))._initialize(
 				"", "", address(0), address(0), address(0)
 			), "ImpermaxV3Collateral: UNAUTHORIZED");
@@ -160,27 +160,27 @@ contract('Factory', function (accounts) {
 			), "ImpermaxV3Borrowable: UNAUTHORIZED");
 		}); 
 		it('factory can only be set once', async () => {
-			const lendingPool = await factory.getLendingPool(tokenizedCLPosition1.address);
+			const lendingPool = await factory.getLendingPool(nftlp1.address);
 			await expectRevert((await CollateralProduction.at(lendingPool.collateral))._setFactory(), "ImpermaxV3Collateral: FACTORY_ALREADY_SET");
-			await expectRevert((await BorrowableProduction.at(lendingPool.borrowable0))._setFactory(), "Impermax: FACTORY_ALREADY_SET");
-			await expectRevert((await BorrowableProduction.at(lendingPool.borrowable1))._setFactory(), "Impermax: FACTORY_ALREADY_SET");
+			await expectRevert((await BorrowableProduction.at(lendingPool.borrowable0))._setFactory(), "PoolToken: FACTORY_ALREADY_SET");
+			await expectRevert((await BorrowableProduction.at(lendingPool.borrowable1))._setFactory(), "PoolToken: FACTORY_ALREADY_SET");
 		}); 
 		it('initially is not initialized', async () => {
-			await factory.obj.checkLendingPool(tokenizedCLPosition1, {initialized: false});
-			await factory.obj.checkLendingPool(tokenizedCLPosition2, {initialized: false});
-			await factory.obj.checkLendingPool(tokenizedCLPosition3, {initialized: false});
+			await factory.obj.checkLendingPool(nftlp1, {initialized: false});
+			await factory.obj.checkLendingPool(nftlp2, {initialized: false});
+			await factory.obj.checkLendingPool(nftlp3, {initialized: false});
 		});
 		it('initialize', async () => {
-			const receipt1 = await factory.initializeLendingPool(tokenizedCLPosition1.address);
-			const receipt2 = await factory.initializeLendingPool(tokenizedCLPosition2.address);
-			const receipt3 = await factory.initializeLendingPool(tokenizedCLPosition3.address);
-			await factory.obj.checkLendingPool(tokenizedCLPosition1, {initialized: true});
-			await factory.obj.checkLendingPool(tokenizedCLPosition2, {initialized: true});
-			await factory.obj.checkLendingPool(tokenizedCLPosition3, {initialized: true});
+			const receipt1 = await factory.initializeLendingPool(nftlp1.address);
+			const receipt2 = await factory.initializeLendingPool(nftlp2.address);
+			const receipt3 = await factory.initializeLendingPool(nftlp3.address);
+			await factory.obj.checkLendingPool(nftlp1, {initialized: true});
+			await factory.obj.checkLendingPool(nftlp2, {initialized: true});
+			await factory.obj.checkLendingPool(nftlp3, {initialized: true});
 			expectEvent(receipt1, 'LendingPoolInitialized', {
-				tokenizedCLPosition: tokenizedCLPosition1.address,
-				token0: tokenizedCLPosition1.obj.token0.address,
-				token1: tokenizedCLPosition1.obj.token1.address,
+				nftlp: nftlp1.address,
+				token0: nftlp1.obj.token0.address,
+				token1: nftlp1.obj.token1.address,
 				collateral: collateral1,
 				borrowable0: borrowable01,
 				borrowable1: borrowable11,
@@ -189,24 +189,24 @@ contract('Factory', function (accounts) {
 		});
 		it('collateral is initialized correctly', async () => {
 			const collateral = await CollateralProduction.at(collateral1);
-			expect(await collateral.underlying()).to.eq(tokenizedCLPosition1.address);
+			expect(await collateral.underlying()).to.eq(nftlp1.address);
 			expect(await collateral.borrowable0()).to.eq(borrowable01);
 			expect(await collateral.borrowable1()).to.eq(borrowable11);
 		});
 		it('borrowable0 is initialized correctly', async () => {
 			const borrowable0 = await BorrowableProduction.at(borrowable01);
-			expect(await borrowable0.underlying()).to.eq(tokenizedCLPosition1.obj.token0.address);
+			expect(await borrowable0.underlying()).to.eq(nftlp1.obj.token0.address);
 			expect(await borrowable0.collateral()).to.eq(collateral1);
 		});
 		it('borrowable1 is initialized correctly', async () => {
 			const borrowable1 = await BorrowableProduction.at(borrowable11);
-			expect(await borrowable1.underlying()).to.eq(tokenizedCLPosition1.obj.token1.address);
+			expect(await borrowable1.underlying()).to.eq(nftlp1.obj.token1.address);
 			expect(await borrowable1.collateral()).to.eq(collateral1);
 		});
 		it('revert if already initialized', async () => {
-			await expectRevert(factory.initializeLendingPool(tokenizedCLPosition1.address), "Impermax: ALREADY_INITIALIZED");
-			await expectRevert(factory.initializeLendingPool(tokenizedCLPosition2.address), "Impermax: ALREADY_INITIALIZED");
-			await expectRevert(factory.initializeLendingPool(tokenizedCLPosition3.address), "Impermax: ALREADY_INITIALIZED");
+			await expectRevert(factory.initializeLendingPool(nftlp1.address), "Impermax: ALREADY_INITIALIZED");
+			await expectRevert(factory.initializeLendingPool(nftlp2.address), "Impermax: ALREADY_INITIALIZED");
+			await expectRevert(factory.initializeLendingPool(nftlp3.address), "Impermax: ALREADY_INITIALIZED");
 		});
 	});
 	

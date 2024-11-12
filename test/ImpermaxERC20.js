@@ -81,8 +81,8 @@ contract('ImpermaxERC20', function (accounts) {
 	});
 
 	it('transfer:fail', async () => {
-		await expectRevert(token.transfer(other, TOTAL_SUPPLY.add(new BN(1)), {from: user}), 'Impermax: TRANSFER_TOO_HIGH');
-		await expectRevert(token.transfer(user, "1", {from: other}), 'Impermax: TRANSFER_TOO_HIGH');
+		await expectRevert(token.transfer(other, TOTAL_SUPPLY.add(new BN(1)), {from: user}), 'ImpermaxERC20: TRANSFER_TOO_HIGH');
+		await expectRevert(token.transfer(user, "1", {from: other}), 'ImpermaxERC20: TRANSFER_TOO_HIGH');
 	});
 
 	it('transferFrom', async () => {
@@ -112,7 +112,7 @@ contract('ImpermaxERC20', function (accounts) {
 	});
 
 	it('transferFrom:fail', async () => {
-		await expectRevert(token.transferFrom(user, other, TEST_AMOUNT, {from: other}), 'Impermax: TRANSFER_NOT_ALLOWED');
+		await expectRevert(token.transferFrom(user, other, TEST_AMOUNT, {from: other}), 'ImpermaxERC20: TRANSFER_NOT_ALLOWED');
 	});
 
 	it('permit', async () => {
@@ -197,7 +197,7 @@ contract('ImpermaxERC20', function (accounts) {
 				value: TEST_AMOUNT,
 				deadline: MAX_UINT_256,
 				private_key: otherForEip712PK,
-			}), 'Impermax: INVALID_SIGNATURE'
+			}), 'ImpermaxERC20: INVALID_SIGNATURE'
 		);
 	});
 });
