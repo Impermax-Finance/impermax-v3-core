@@ -54,7 +54,7 @@ contract ImpermaxERC20 is IERC20 {
 	}
 
 	function _transfer(address from, address to, uint value) internal {
-		balanceOf[from] = balanceOf[from].sub(value, "Impermax: TRANSFER_TOO_HIGH");
+		balanceOf[from] = balanceOf[from].sub(value, "ImpermaxERC20: TRANSFER_TOO_HIGH");
 		balanceOf[to] = balanceOf[to].add(value);
 		emit Transfer(from, to, value);
 	}
@@ -71,14 +71,14 @@ contract ImpermaxERC20 is IERC20 {
 
 	function transferFrom(address from, address to, uint value) external returns (bool) {
 		if (allowance[from][msg.sender] != uint(-1)) {
-			allowance[from][msg.sender] = allowance[from][msg.sender].sub(value, "Impermax: TRANSFER_NOT_ALLOWED");
+			allowance[from][msg.sender] = allowance[from][msg.sender].sub(value, "ImpermaxERC20: TRANSFER_NOT_ALLOWED");
 		}
 		_transfer(from, to, value);
 		return true;
 	}
 	
 	function _checkSignature(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s, bytes32 typehash) internal {
-		require(deadline >= block.timestamp, "Impermax: EXPIRED");
+		require(deadline >= block.timestamp, "ImpermaxERC20: EXPIRED");
 		bytes32 digest = keccak256(
 			abi.encodePacked(
 				'\x19\x01',
@@ -87,7 +87,7 @@ contract ImpermaxERC20 is IERC20 {
 			)
 		);
 		address recoveredAddress = ecrecover(digest, v, r, s);
-		require(recoveredAddress != address(0) && recoveredAddress == owner, "Impermax: INVALID_SIGNATURE");	
+		require(recoveredAddress != address(0) && recoveredAddress == owner, "ImpermaxERC20: INVALID_SIGNATURE");	
 	}
 
 	// keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
