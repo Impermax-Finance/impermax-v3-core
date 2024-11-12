@@ -107,7 +107,7 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 		
 		// optimistically transfer funds
 		if (borrowAmount > 0) _safeTransfer(receiver, borrowAmount);
-		if (data.length > 0) IImpermaxCallee(receiver).impermaxBorrow(msg.sender, tokenId, borrowAmount, data);
+		if (data.length > 0) IImpermaxCallee(receiver).impermaxV3Borrow(msg.sender, tokenId, borrowAmount, data);
 		uint balance = IERC20(underlying).balanceOf(address(this));
 		
 		uint repayAmount = balance.add(borrowAmount).sub(_totalBalance);
