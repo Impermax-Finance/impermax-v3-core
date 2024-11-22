@@ -129,12 +129,11 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		}
 		
 		uint seizePercentage = repayToCollateralRatio.mul(liquidationIncentive).div(1e18);
-		uint feePercentage = repayToCollateralRatio.mul(liquidationFee).div(uint(1e18).sub(seizePercentage));	
-		
 		seizeTokenId = INFTLP(underlying).split(tokenId, seizePercentage);
 
 		address reservesManager = IFactory(factory).reservesManager();		
-		if (feePercentage > 0 && reservesManager != address(0)) {
+		if (liquidationFee > 0 && reservesManager != address(0)) {
+			uint feePercentage = repayToCollateralRatio.mul(liquidationFee).div(uint(1e18).sub(seizePercentage));	
 			uint feeTokenId = INFTLP(underlying).split(tokenId, feePercentage);		
 			_mint(reservesManager, feeTokenId);
 			emit Seize(reservesManager, tokenId, feePercentage, feeTokenId);
