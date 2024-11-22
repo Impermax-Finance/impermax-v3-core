@@ -19,8 +19,8 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	/*** Collateralization Model ***/
 	
 	function _getPositionObjectAmounts(uint tokenId, uint debtX, uint debtY) internal returns (CollateralMath.PositionObject memory positionObject) {
-		if (debtX == uint(-1)) debtX = IBorrowable(borrowable0).borrowBalance(tokenId);
-		if (debtY == uint(-1)) debtY = IBorrowable(borrowable1).borrowBalance(tokenId);
+		if (debtX == uint(-1)) debtX = IBorrowable(borrowable0).currentBorrowBalance(tokenId);
+		if (debtY == uint(-1)) debtY = IBorrowable(borrowable1).currentBorrowBalance(tokenId);
 		
 		(uint priceSqrtX96, INFTLP.RealXYs memory realXYs) = 
 			INFTLP(underlying).getPositionData(tokenId, safetyMarginSqrt);

@@ -59,6 +59,9 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 		if (borrowSnapshot.interestIndex == 0) return 0; // not initialized
 		return uint(borrowSnapshot.principal).mul(borrowIndex).div(borrowSnapshot.interestIndex);
 	}
+	function currentBorrowBalance(uint256 tokenId) external accrue returns (uint) {
+		return borrowBalance(tokenId);
+	}
 	
 	function _trackBorrow(uint256 tokenId, uint accountBorrows, uint _borrowIndex) internal {
 		address _borrowTracker = borrowTracker;
@@ -147,7 +150,7 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 		emit RestructureDebt(tokenId, reduceToRatio, repayAmount, accountBorrowsPrior, accountBorrows, _totalBorrows);
 	}
 		
-	function trackBorrow(uint256 tokenId) external {
+	function trackBorrow(uint256 tokenId) external accrue {
 		_trackBorrow(tokenId, borrowBalance(tokenId), borrowIndex);
 	}
 	
