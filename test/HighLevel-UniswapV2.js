@@ -35,6 +35,7 @@ const CDeployer = artifacts.require('CDeployer');
 const Factory = artifacts.require('ImpermaxV3Factory');
 const Collateral = artifacts.require('ImpermaxV3Collateral');
 const Borrowable = artifacts.require('ImpermaxV3Borrowable');
+const Liquidator = artifacts.require('Liquidator');
 
 contract('Highlevel-UniswapV2', function (accounts) {
 	const root = accounts[0];
@@ -42,8 +43,9 @@ contract('Highlevel-UniswapV2', function (accounts) {
 	const reservesAdmin = accounts[2];		
 	const borrower = accounts[3];		
 	const lender = accounts[4];		
-	const liquidator = accounts[5];		
-	const reservesManager = accounts[6];		
+	let liquidatorContract0;
+	let liquidatorContract1;
+	const reservesManager = accounts[6];	
 
 	let tokenizedPosition, factory, simpleUniswapOracle, uniswapV2Pair, token0, token1, collateral, borrowable0, borrowable1;
 	let TOKEN_ID;
@@ -80,12 +82,15 @@ contract('Highlevel-UniswapV2', function (accounts) {
 	const expectedAccountLiquidityC = bnMantissa(5.191604);
 	const price0C = 7.874008;
 	const price1C = 0.1270001;
-	const expectedAccountShortfallD = bnMantissa(1.071458);
 	const liquidatedAmount = bnMantissa(163.9871);
 	const liquidatedAmountLiquidator = bnMantissa(160.8335);
 	const liquidatedAmountReserves = bnMantissa(3.15360);
 	const expectedLenderProfit0 = bnMantissa(0.0228327);
 	const expectedProtocolProfit0 = bnMantissa(0.00253695);
+	const price0D = 2;
+	const price1D = 0.1270001;
+	const expectedLenderLoss1 = bnMantissa(84.84232);
+	const expectedProtocolProfit1 = bnMantissa(0.03495842);
 
 	before(async () => {
 		await freezeTime();
@@ -122,6 +127,8 @@ contract('Highlevel-UniswapV2', function (accounts) {
 		//console.log(receiptBorrowable0.receipt.gasUsed + ' createBorrowable0');
 		//console.log(receiptBorrowable1.receipt.gasUsed + ' createBorrowable1');
 		//console.log(receiptInitialize.receipt.gasUsed + ' initialize');
+		liquidatorContract0 = await Liquidator.new(token0.address, borrowable0.address);
+		liquidatorContract1 = await Liquidator.new(token1.address, borrowable1.address);
 	});
 	
 	it('settings sanity check', async () => {
@@ -218,25 +225,24 @@ contract('Highlevel-UniswapV2', function (accounts) {
 	it('liquidation fail', async () => {
 		await simpleUniswapOracle.setPrice(uniswapV2Pair.address, uq112(price0B / price1B));
 		await testAccountLiquidity(expectedAccountLiquidityC.mul(oneMantissa).div(collateralAmount));
-		await expectRevert(borrowable0.liquidate(TOKEN_ID, 0, liquidator, "0x"), 'ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL');
+		await expectRevert(liquidatorContract0.liquidate(TOKEN_ID, 0), 'ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL');
 	});
 	
-	it('liquidate token0', async () => {
+	it('flash liquidate token0', async () => {
 		await simpleUniswapOracle.setPrice(uniswapV2Pair.address, uq112(price0C / price1C));
 		const currentBorrowAmount0 = (await borrowable0.borrowBalance(TOKEN_ID));
-		await token0.mint(liquidator, currentBorrowAmount0);
-		await token0.transfer(borrowable0.address, currentBorrowAmount0, {from: liquidator});
-		const seizeTokenId = await borrowable0.liquidate.call(TOKEN_ID, currentBorrowAmount0, liquidator, "0x");
+		await token0.mint(liquidatorContract0.address, currentBorrowAmount0);
+		const seizeTokenId = await liquidatorContract0.liquidate.call(TOKEN_ID, currentBorrowAmount0);
+		const receiptLiquidate = await liquidatorContract0.liquidate(TOKEN_ID, currentBorrowAmount0);
 		const reserveSeizeTokenId = seizeTokenId * 1 + 1;
-		const receiptLiquidate = await borrowable0.liquidate(TOKEN_ID, currentBorrowAmount0, liquidator, "0x");
 		expect(await borrowable0.borrowBalance(TOKEN_ID) / 1e18).to.lt(0.01);
 		expectAlmostEqualMantissa(await tokenizedPosition.liquidity(seizeTokenId), liquidatedAmountLiquidator);
 		expectAlmostEqualMantissa(await tokenizedPosition.liquidity(reserveSeizeTokenId), liquidatedAmountReserves);
 		expectAlmostEqualMantissa(await tokenizedPosition.liquidity(TOKEN_ID), collateralAmount.sub(liquidatedAmount));
-		expect(await tokenizedPosition.ownerOf(seizeTokenId)).to.eq(liquidator);
+		expect(await tokenizedPosition.ownerOf(seizeTokenId)).to.eq(liquidatorContract0.address);
 		expect(await collateral.ownerOf(reserveSeizeTokenId)).to.eq(reservesManager);
 		expect(await tokenizedPosition.ownerOf(reserveSeizeTokenId)).to.eq(collateral.address);
-		//console.log(receiptLiquidate.receipt.gasUsed + ' liquidate');
+		//console.log(receiptLiquidate.receipt.gasUsed + ' liquidate from liquidator contract');
 	});
 	
 	it('redeem token0', async () => {
@@ -247,6 +253,51 @@ contract('Highlevel-UniswapV2', function (accounts) {
 		const reservesManagerTokens = await borrowable0.balanceOf(reservesManager);
 		const reservesManagerAmount = (await borrowable0.exchangeRate.call()).mul(reservesManagerTokens).div(oneMantissa);
 		expectAlmostEqualMantissa(reservesManagerAmount, expectedProtocolProfit0);
+		//console.log(receiptRedeem.receipt.gasUsed + ' redeem');
+	});
+	
+	it('increaseTime, flash restructure and liquidate token1', async () => {
+		// reduce collateral
+		await collateral.redeem(borrower, TOKEN_ID, bnMantissa(0.2), {from: borrower});
+		
+		await simpleUniswapOracle.setPrice(uniswapV2Pair.address, uq112(price0D / price1D));				
+		increaseTime(timeElapsed);
+		await borrowable1.exchangeRate();
+		increaseTime(timeElapsed);
+		
+		// TODO currentBorrowBalance
+		const currentBorrowAmount0 = (await borrowable0.currentBorrowBalance.call(TOKEN_ID));
+		const currentBorrowAmount1 = (await borrowable1.currentBorrowBalance.call(TOKEN_ID));
+		const position = await tokenizedPosition.getPositionData.call(TOKEN_ID, oneMantissa);
+		const collateralValues = position.realXYs.currentPrice;
+		const expectedDecrease = (collateralValues.realX * price0D + collateralValues.realY * price1D) / (currentBorrowAmount0 * price0D + currentBorrowAmount1 * price1D) / 1.04;
+		const decreaseAmount = (1 - expectedDecrease) * currentBorrowAmount1;
+		//console.log(expectedDecrease);
+		//console.log(decreaseAmount / 1e18);
+		const exchangeRateBefore = await borrowable1.exchangeRate.call() / 1e18;
+		
+		const liquidateAmount = bnMantissa(currentBorrowAmount1 / 1e18 * expectedDecrease);
+		await token1.mint(liquidatorContract1.address, liquidateAmount);
+		const seizeTokenId = await liquidatorContract1.restructureAndLiquidate.call(TOKEN_ID, liquidateAmount);
+		const receiptLiquidate = await liquidatorContract1.restructureAndLiquidate(TOKEN_ID, liquidateAmount);
+		const reserveSeizeTokenId = seizeTokenId * 1 + 1;
+		const exchangeRateAfter = await borrowable1.exchangeRate.call() / 1e18;
+		//console.log(exchangeRateBefore, exchangeRateAfter, exchangeRateAfter / exchangeRateBefore)
+		
+		expect(await borrowable1.borrowBalance(TOKEN_ID) / 1e18).to.lt(0.01);
+		expect(await tokenizedPosition.ownerOf(seizeTokenId)).to.eq(liquidatorContract1.address);
+		expect(await collateral.ownerOf(reserveSeizeTokenId)).to.eq(reservesManager);
+		expect(await tokenizedPosition.ownerOf(reserveSeizeTokenId)).to.eq(collateral.address);
+	});
+	
+	it('redeem token1', async () => {
+		const lenderTokens = await borrowable1.balanceOf(lender);
+		await borrowable1.transfer(borrowable1.address, lenderTokens, {from: lender});
+		const receiptRedeem = await borrowable1.redeem(lender);
+		expectAlmostEqualMantissa(await token1.balanceOf(lender), lendAmount1.sub(expectedLenderLoss1));
+		const reservesManagerTokens = await borrowable1.balanceOf(reservesManager);
+		const reservesManagerAmount = (await borrowable1.exchangeRate.call()).mul(reservesManagerTokens).div(oneMantissa);
+		expectAlmostEqualMantissa(reservesManagerAmount, expectedProtocolProfit1);
 		//console.log(receiptRedeem.receipt.gasUsed + ' redeem');
 	});
 });

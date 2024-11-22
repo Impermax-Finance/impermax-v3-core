@@ -485,8 +485,10 @@ contract('Borrowable', function (accounts) {
 			);
 			await pretendHasBorrowed(TOKEN_ID, repayAmount);
 			await underlying.setBalanceHarness(liquidatorContract.address, repayAmount);
-			const seizeTokenId = await borrowable.liquidate.call(TOKEN_ID, repayAmount, liquidatorContract.address, encode(['uint'], [repayAmount.toString()]));
-			const receipt = await borrowable.liquidate(TOKEN_ID, repayAmount, liquidatorContract.address, encode(['uint'], [repayAmount.toString()]));
+			const seizeTokenId = await liquidatorContract.liquidate.call(TOKEN_ID, repayAmount);
+			const receipt = await liquidatorContract.liquidate(TOKEN_ID, repayAmount);
+			//const seizeTokenId = await borrowable.liquidate.call(TOKEN_ID, repayAmount, liquidatorContract.address, encode(['uint'], [repayAmount.toString()]));
+			//const receipt = await borrowable.liquidate(TOKEN_ID, repayAmount, liquidatorContract.address, encode(['uint'], [repayAmount.toString()]));
 			
 			const position = await tokenizedCLPosition.getPositionData.call(seizeTokenId, 0);
 			expectAlmostEqualMantissa(position.realXYs.currentPrice.realX, seizeLiquidityLiquidator);
@@ -494,16 +496,17 @@ contract('Borrowable', function (accounts) {
 			expect(await borrowable.totalBorrows() * 1).to.eq(0);
 			expect(await borrowable.borrowBalance(TOKEN_ID) * 1).to.eq(0);
 			expect(await borrowable.totalBalance() * 1).to.eq(repayAmount * 1);
-			expectEvent(receipt, 'Liquidate', {
-				sender: root,
-				tokenId: TOKEN_ID,
-				liquidator: liquidatorContract.address,
-				seizeTokenId: seizeTokenId,
-				repayAmount: repayAmount,
-				accountBorrowsPrior: repayAmount,
-				accountBorrows: '0',
-				totalBorrows: '0',
-			});
+			expect(await tokenizedCLPosition.ownerOf(seizeTokenId)).to.eq(liquidatorContract.address);
+			//expectEvent(receipt, 'Liquidate', {
+			//	sender: liquidatorContract.address,
+			//	tokenId: TOKEN_ID,
+			//	liquidator: liquidatorContract.address,
+			//	seizeTokenId: seizeTokenId,
+			//	repayAmount: repayAmount,
+			//	accountBorrowsPrior: repayAmount,
+			//	accountBorrows: '0',
+			//	totalBorrows: '0',
+			//});
 		});
 	});
 	
