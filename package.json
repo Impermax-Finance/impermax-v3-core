@@ -2,6 +2,7 @@
   "name": "impermax-v3-core",
   "version": "0.0.1",
   "description": "Impermax V3 Core",
+  "license": "BUSL-1.1",
   "main": "index.js",
   "author": "Simone Rigolon",
   "devDependencies": {
