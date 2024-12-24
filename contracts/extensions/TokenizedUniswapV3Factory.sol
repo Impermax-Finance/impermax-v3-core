@@ -1,14 +1,13 @@
 pragma solidity =0.5.16;
 
+import "./interfaces/ITokenizedUniswapV3Factory.sol";
 import "./TokenizedUniswapV3Position.sol";
 
-contract TokenizedUniswapV3Factory {
+contract TokenizedUniswapV3Factory is ITokenizedUniswapV3Factory {
 	address public uniswapV3Factory;
 
 	mapping(address => mapping(address => address)) public getNFTLP;
 	address[] public allNFTLP;
-
-	event NFTLPCreated(address indexed token0, address indexed token1, address NFTLP, uint);
 
 	constructor(address _uniswapV3Factory) public {
 		uniswapV3Factory = _uniswapV3Factory;

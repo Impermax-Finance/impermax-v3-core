@@ -25,6 +25,8 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		uint128 liquidity;
 		uint256 feeGrowthInside0LastX128;
 		uint256 feeGrowthInside1LastX128;
+		uint256 unclaimedFees0;	
+		uint256 unclaimedFees1;	
 	}
 
 	uint32 constant ORACLE_T = 1800;
@@ -95,8 +97,11 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		bytes32 hash = UniswapV3Position.getHash(address(this), position.tickLower, position.tickUpper);
 		(,uint256 fg0, uint256 fg1,,) = IUniswapV3Pool(pool).positions(hash);
 		
-		feeCollectedA = fg0.sub(position.feeGrowthInside0LastX128).mul(position.liquidity).div(Q128);
-		feeCollectedB = fg1.sub(position.feeGrowthInside1LastX128).mul(position.liquidity).div(Q128);
+		uint256 delta0 = fg0 > position.feeGrowthInside0LastX128 ? fg0 - position.feeGrowthInside0LastX128 : 0;
+		uint256 delta1 = fg1 > position.feeGrowthInside1LastX128 ? fg1 - position.feeGrowthInside1LastX128 : 0;
+		
+		feeCollectedA = delta0.mul(position.liquidity).div(Q128).add(position.unclaimedFees0);
+		feeCollectedB = delta1.mul(position.liquidity).div(Q128).add(position.unclaimedFees1);
 	}
 	
 	function getPositionData(uint256 tokenId, uint256 safetyMarginSqrt) external returns (
@@ -148,7 +153,9 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 			tickUpper: tickUpper,
 			liquidity: safe128(liquidity),
 			feeGrowthInside0LastX128: fg0,
-			feeGrowthInside1LastX128: fg1
+			feeGrowthInside1LastX128: fg1,
+			unclaimedFees0: 0,
+			unclaimedFees1: 0
 		});
 		
 		_updateBalance(fee, tickLower, tickUpper);
@@ -156,6 +163,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		emit MintPosition(newTokenId, fee, tickLower, tickUpper);
 		emit UpdatePositionLiquidity(newTokenId, liquidity);
 		emit UpdatePositionFeeGrowthInside(newTokenId, fg0, fg1);
+		emit UpdatePositionUnclaimedFees(newTokenId, 0, 0);
 	}
 
 	// this low-level function should be called from another contract
@@ -177,32 +185,44 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		(amount0, amount1) = IUniswapV3Pool(pool).collect(to, position.tickLower, position.tickUpper, safe128(amount0), safe128(amount1));
 		
 		emit UpdatePositionLiquidity(tokenId, 0);
+		emit UpdatePositionUnclaimedFees(tokenId, 0, 0);
 	}
 	
+	function _splitUint(uint256 n, uint256 percentage) internal pure returns (uint256 a, uint256 b) {
+		a = n.mul(percentage).div(1e18);
+		b = n.sub(a);
+	}
 	function split(uint256 tokenId, uint256 percentage) external nonReentrant returns (uint256 newTokenId) {
-		require(percentage < 1e18, "TokenizedUniswapV3Position: ABOVE_100_PERCENT");
+		require(percentage <= 1e18, "TokenizedUniswapV3Position: ABOVE_100_PERCENT");
 		address owner = ownerOf[tokenId];
 		_checkAuthorized(owner, msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
 		
 		Position memory oldPosition = positions[tokenId];
-		uint256 newTokenLiquidity = uint256(oldPosition.liquidity).mul(percentage).div(1e18);
-		uint128 oldTokenLiquidity = safe128(oldPosition.liquidity - newTokenLiquidity);
-		positions[tokenId].liquidity = oldTokenLiquidity;
+		(uint256 newLiquidity, uint256 oldLiquidity) = _splitUint(oldPosition.liquidity, percentage);
+		(uint256 newUnclaimedFees0, uint256 oldUnclaimedFees0) = _splitUint(oldPosition.unclaimedFees0, percentage);
+		(uint256 newUnclaimedFees1, uint256 oldUnclaimedFees1) = _splitUint(oldPosition.unclaimedFees1, percentage);
+		positions[tokenId].liquidity = safe128(oldLiquidity);
+		positions[tokenId].unclaimedFees0 = oldUnclaimedFees0;
+		positions[tokenId].unclaimedFees1 = oldUnclaimedFees1;
 		newTokenId = positionLength++;
 		_mint(owner, newTokenId);
 		positions[newTokenId] = Position({
 			fee: oldPosition.fee,
 			tickLower: oldPosition.tickLower,
 			tickUpper: oldPosition.tickUpper,
-			liquidity: safe128(newTokenLiquidity),
+			liquidity: safe128(newLiquidity),
 			feeGrowthInside0LastX128: oldPosition.feeGrowthInside0LastX128,
-			feeGrowthInside1LastX128: oldPosition.feeGrowthInside1LastX128
+			feeGrowthInside1LastX128: oldPosition.feeGrowthInside1LastX128,
+			unclaimedFees0: newUnclaimedFees0,
+			unclaimedFees1: newUnclaimedFees1
 		});
 		
-		emit UpdatePositionLiquidity(tokenId, oldTokenLiquidity);
+		emit UpdatePositionLiquidity(tokenId, oldLiquidity);
+		emit UpdatePositionUnclaimedFees(tokenId, oldUnclaimedFees0, oldUnclaimedFees1);
 		emit MintPosition(newTokenId, oldPosition.fee, oldPosition.tickLower, oldPosition.tickUpper);
-		emit UpdatePositionLiquidity(newTokenId, newTokenLiquidity);
+		emit UpdatePositionLiquidity(newTokenId, newLiquidity);
+		emit UpdatePositionUnclaimedFees(newTokenId, newUnclaimedFees0, newUnclaimedFees1);
 		emit UpdatePositionFeeGrowthInside(newTokenId, oldPosition.feeGrowthInside0LastX128, oldPosition.feeGrowthInside1LastX128);
 	}
 	
@@ -218,27 +238,29 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		
 		// new fee growth is calculated as average of the 2 positions weighted by liquidity
 		uint256 newLiquidity = uint256(positionA.liquidity).add(positionB.liquidity);
+		uint256 newUnclaimedFees0 = positionA.unclaimedFees0.add(positionB.unclaimedFees0);
+		uint256 newUnclaimedFees1 = positionA.unclaimedFees1.add(positionB.unclaimedFees1);
 		uint256 tA0 = positionA.feeGrowthInside0LastX128.mul(positionA.liquidity);
 		uint256 tA1 = positionA.feeGrowthInside1LastX128.mul(positionA.liquidity);
 		uint256 tB0 = positionB.feeGrowthInside0LastX128.mul(positionB.liquidity);
 		uint256 tB1 = positionB.feeGrowthInside1LastX128.mul(positionB.liquidity);
-		uint256 newFeeGrowthInside0LastX128 = tA0.add(tB0).div(newLiquidity);
-		uint256 newFeeGrowthInside1LastX128 = tA1.add(tB1).div(newLiquidity);
+		uint256 newFeeGrowthInside0LastX128 = tA0.add(tB0).div(newLiquidity).add(1); // round up
+		uint256 newFeeGrowthInside1LastX128 = tA1.add(tB1).div(newLiquidity).add(1); // round up
 		
 		positions[tokenId].liquidity = safe128(newLiquidity);
 		positions[tokenId].feeGrowthInside0LastX128 = newFeeGrowthInside0LastX128;
 		positions[tokenId].feeGrowthInside1LastX128 = newFeeGrowthInside1LastX128;
+		positions[tokenId].unclaimedFees0 = newUnclaimedFees0;
+		positions[tokenId].unclaimedFees1 = newUnclaimedFees1;
 		delete positions[tokenToJoin];
 		_burn(tokenToJoin);
 		
 		emit UpdatePositionLiquidity(tokenId, newLiquidity);
 		emit UpdatePositionFeeGrowthInside(tokenId, newFeeGrowthInside0LastX128, newFeeGrowthInside1LastX128);
+		emit UpdatePositionUnclaimedFees(tokenId, newUnclaimedFees0, newUnclaimedFees1);
 		emit UpdatePositionLiquidity(tokenToJoin, 0);
+		emit UpdatePositionUnclaimedFees(tokenToJoin, 0, 0);
 	}
-	
-	// THERE ARE MANY PROBLEMS WITH MANUAL CLAIM
-	// - handling multiple calls
-	// - we should check the collateral is enough after claiming, so it can't be permissionless
 	
 	/*** Utilities ***/
 
