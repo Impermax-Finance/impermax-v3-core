@@ -75,7 +75,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	}
 	
 	function _updateBalance(uint24 fee, int24 tickLower, int24 tickUpper) internal {
-		address pool = uniswapV3PoolByFee[fee];
+		address pool = getPool(fee);
 		bytes32 hash = UniswapV3Position.getHash(address(this), tickLower, tickUpper);
 		(uint balance,,,,) = IUniswapV3Pool(pool).positions(hash);
 		totalBalance[fee][tickLower][tickUpper] = balance;
@@ -111,7 +111,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		Position memory position = positions[tokenId];
 		
 		// trigger update of fee growth
-		address pool = uniswapV3PoolByFee[position.fee];
+		address pool = getPool(position.fee);
 		IUniswapV3Pool(pool).burn(position.tickLower, position.tickUpper, 0);
 		(uint256 feeCollectedX, uint256 feeCollectedY) = _getFeeCollected(position, pool);
 	
