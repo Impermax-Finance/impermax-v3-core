@@ -5,16 +5,16 @@ import "../ImpermaxERC721.sol";
 import "../interfaces/INFTLP.sol";
 import "./interfaces/IUniswapV3Factory.sol";
 import "./interfaces/IUniswapV3Pool.sol";
+import "./interfaces/IUniswapV3Oracle.sol";
 import "./interfaces/ITokenizedUniswapV3Position.sol";
+import "./interfaces/ITokenizedUniswapV3Factory.sol";
 import "./libraries/UniswapV3CollateralMath.sol";
-import "./libraries/UniswapV3WeightedOracleLibrary.sol";
 import "./libraries/UniswapV3Position.sol";
 import "./libraries/TickMath.sol";
 
 contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, ImpermaxERC721 {
 	using TickMath for int24;
 	using UniswapV3CollateralMath for UniswapV3CollateralMath.PositionObject;
-	using UniswapV3WeightedOracleLibrary for UniswapV3WeightedOracleLibrary.PeriodObservation[];
 	
     uint constant Q128 = 2**128;
 	
@@ -82,12 +82,8 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	}
 	
 	function oraclePriceSqrtX96() public returns (uint256) {
-		UniswapV3WeightedOracleLibrary.PeriodObservation[] memory observations = new UniswapV3WeightedOracleLibrary.PeriodObservation[](poolsList.length);
-		for (uint i = 0; i < poolsList.length; i++) {
-			observations[i] = UniswapV3WeightedOracleLibrary.consult(poolsList[i], ORACLE_T);
-		}
-		int24 arithmeticMeanWeightedTick = observations.getArithmeticMeanTickWeightedByLiquidity();
-		return arithmeticMeanWeightedTick.getSqrtRatioAtTick();
+		address oracle = ITokenizedUniswapV3Factory(factory).oracle();
+		return IUniswapV3Oracle(oracle).oraclePriceSqrtX96(poolsList);
 	}
  
 	/*** Position state ***/
