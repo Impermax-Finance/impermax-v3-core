@@ -25,7 +25,9 @@ const MockUniswapV3Pair = artifacts.require('MockUniswapV3Pair');
 const MockOracle = artifacts.require('MockOracle');
 const TokenizedUniswapV2Factory = artifacts.require('TokenizedUniswapV2Factory');
 const TokenizedUniswapV2Position = artifacts.require('TokenizedUniswapV2Position');
+const TokenizedUniswapV3Deployer = artifacts.require('TokenizedUniswapV3Deployer');
 const TokenizedUniswapV3Factory = artifacts.require('TokenizedUniswapV3Factory');
+const UniswapV3OracleTWAP = artifacts.require('UniswapV3OracleTWAP');
 const TokenizedUniswapV3Position = artifacts.require('TokenizedUniswapV3Position');
 const MockTokenizedCLPosition = artifacts.require('MockTokenizedCLPosition');
 const BDeployer = artifacts.require('BDeployer');
@@ -113,8 +115,15 @@ async function makeTokenizedUniswapV2Position(opts = {}) {
 }
 
 async function makeTokenizedUniswapV3Factory(opts = {}) {
-	const uniswapV3Factory = opts.uniswapV3Factory || await makeUniswapV3Factory(opts);;
-	const tokenizedUniswapV3Factory = await TokenizedUniswapV3Factory.new(uniswapV3Factory.address);
+	const uniswapV3Factory = opts.uniswapV3Factory || await makeUniswapV3Factory(opts);
+	const deployer = await TokenizedUniswapV3Deployer.new();
+	const oracle = await UniswapV3OracleTWAP.new();
+	const tokenizedUniswapV3Factory = await TokenizedUniswapV3Factory.new(
+		opts.admin || address(0),
+		uniswapV3Factory.address,
+		deployer.address,
+		oracle.address,
+	);
 	return Object.assign(tokenizedUniswapV3Factory, {obj: {uniswapV3Factory}});
 }
 
