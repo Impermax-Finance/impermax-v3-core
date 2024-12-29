@@ -26,6 +26,17 @@ interface ITokenizedUniswapV3Position {
 	
 	// ITokenizedUniswapV3Position
 	
+	struct Position {
+		uint24 fee;
+		int24 tickLower;
+		int24 tickUpper;
+		uint128 liquidity;
+		uint256 feeGrowthInside0LastX128;
+		uint256 feeGrowthInside1LastX128;
+		uint256 unclaimedFees0;	
+		uint256 unclaimedFees1;	
+	}
+	
 	function factory() external view returns (address);
 	function uniswapV3Factory() external view returns (address);
 	
