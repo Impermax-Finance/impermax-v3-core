@@ -21,7 +21,7 @@ interface ITokenizedUniswapV3Position {
 		INFTLP.RealXYs memory realXYs
 	);
 	
-	function join(uint256 tokenIdFrom, uint256 tokenIdTo) external;
+	function join(uint256 tokenId, uint256 tokenToJoin) external;
 	function split(uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId);
 	
 	// ITokenizedUniswapV3Position
@@ -52,7 +52,7 @@ interface ITokenizedUniswapV3Position {
 		uint256 unclaimedFees0,
 		uint256 unclaimedFees1
 	);
-	function positionLength() external view returns (uint256);
+	function positionsLength() external view returns (uint256);
 	
 	function getPool(uint24 fee) external returns (address pool);
 	function poolsList(uint256 index) external view returns (address);

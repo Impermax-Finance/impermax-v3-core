@@ -32,11 +32,11 @@ library UniswapV3CollateralMath {
 		});
 	}
 
-	// liquidity / price
+	// liquidity / sqrt(price)
 	function getVirtualX(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
 		return positionObject.liquidity.mul(Q96).div(priceSqrtX96);
 	}
-	// liquidity * price
+	// liquidity * sqrt(price)
 	function getVirtualY(PositionObject memory positionObject, uint priceSqrtX96) internal pure returns (uint) {
 		return positionObject.liquidity.mul(priceSqrtX96).div(Q96);
 	}

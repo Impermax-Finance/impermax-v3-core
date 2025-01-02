@@ -21,7 +21,7 @@ interface ITokenizedUniswapV2Position {
 		INFTLP.RealXYs memory realXYs
 	);
 	
-	function join(uint256 tokenIdFrom, uint256 tokenIdTo) external;
+	function join(uint256 tokenId, uint256 tokenToJoin) external;
 	function split(uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId);
 	
 	// ITokenizedUniswapV2Position

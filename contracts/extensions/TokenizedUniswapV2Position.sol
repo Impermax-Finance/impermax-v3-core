@@ -129,6 +129,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 	
 	function join(uint256 tokenId, uint256 tokenToJoin) external nonReentrant {
 		_checkAuthorized(ownerOf[tokenToJoin], msg.sender, tokenToJoin);
+		require(tokenId != tokenToJoin, "TokenizedUniswapV3Position: SAME_ID");
 		
 		uint256 initialLiquidity = liquidity[tokenId];
 		uint256 liquidityToAdd = liquidity[tokenToJoin];

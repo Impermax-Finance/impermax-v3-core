@@ -19,8 +19,6 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	
     uint constant Q128 = 2**128;
 
-	uint32 constant ORACLE_T = 1800;
-
 	address public factory;
 	address public uniswapV3Factory;
 	address public token0;
@@ -33,7 +31,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	) public totalBalance;
 	
 	mapping(uint256 => Position) public positions;
-	uint256 public positionLength;
+	uint256 public positionsLength;
 	
 	mapping(uint24 => address) public uniswapV3PoolByFee;
 	address[] public poolsList;
@@ -134,7 +132,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		(uint balance, uint256 fg0, uint256 fg1,,) = IUniswapV3Pool(pool).positions(hash);
 		uint liquidity = balance.sub(totalBalance[fee][tickLower][tickUpper]);
 		
-		newTokenId = positionLength++;
+		newTokenId = positionsLength++;
 		_mint(to, newTokenId);		
 		positions[newTokenId] = Position({
 			fee: fee,
@@ -194,7 +192,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		positions[tokenId].liquidity = safe128(oldLiquidity);
 		positions[tokenId].unclaimedFees0 = oldUnclaimedFees0;
 		positions[tokenId].unclaimedFees1 = oldUnclaimedFees1;
-		newTokenId = positionLength++;
+		newTokenId = positionsLength++;
 		_mint(owner, newTokenId);
 		positions[newTokenId] = Position({
 			fee: oldPosition.fee,
@@ -221,6 +219,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		Position memory positionA = positions[tokenId];
 		Position memory positionB = positions[tokenToJoin];
 		
+		require(tokenId != tokenToJoin, "TokenizedUniswapV3Position: SAME_ID");
 		require(positionA.fee == positionB.fee, "TokenizedUniswapV3Position: INCOMPATIBLE_TOKENS_META");
 		require(positionA.tickLower == positionB.tickLower, "TokenizedUniswapV3Position: INCOMPATIBLE_TOKENS_META");
 		require(positionA.tickUpper == positionB.tickUpper, "TokenizedUniswapV3Position: INCOMPATIBLE_TOKENS_META");
