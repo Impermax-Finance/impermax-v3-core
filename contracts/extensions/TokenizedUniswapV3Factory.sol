@@ -35,7 +35,7 @@ contract TokenizedUniswapV3Factory is ITokenizedUniswapV3Factory {
 		require(token0 != address(0));
 		require(getNFTLP[token0][token1] == address(0), "TokenizedUniswapV3Factory: PAIR_EXISTS");
 		NFTLP = deployer.deployNFTLP(token0, token1);
-		ITokenizedUniswapV3Position(NFTLP)._initialize(uniswapV3Factory, token0, token1);
+		ITokenizedUniswapV3Position(NFTLP)._initialize(uniswapV3Factory, oracle, token0, token1);
 		getNFTLP[token0][token1] = NFTLP;
 		getNFTLP[token1][token0] = NFTLP;
 		allNFTLP.push(NFTLP);

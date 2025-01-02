@@ -21,6 +21,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 
 	address public factory;
 	address public uniswapV3Factory;
+	address public oracle;
 	address public token0;
 	address public token1;
 	
@@ -41,6 +42,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	// called once by the factory at the time of deployment
 	function _initialize (
 		address _uniswapV3Factory, 
+		address _oracle, 
 		address _token0, 
 		address _token1
 	) external {
@@ -48,6 +50,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		factory = msg.sender;
 		_setName("Tokenized Uniswap V3", "NFT-UNI-V3");
 		uniswapV3Factory = _uniswapV3Factory;
+		oracle = _oracle;
 		token0 = _token0;
 		token1 = _token1;
 	}
@@ -70,7 +73,6 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	}
 	
 	function oraclePriceSqrtX96() public returns (uint256) {
-		address oracle = ITokenizedUniswapV3Factory(factory).oracle();
 		return IUniswapV3Oracle(oracle).oraclePriceSqrtX96(poolsList);
 	}
  

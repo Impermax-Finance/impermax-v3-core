@@ -66,6 +66,7 @@ interface ITokenizedUniswapV3Position {
 
 	function _initialize (
 		address _uniswapV3Factory, 
+		address _oracle, 
 		address _token0, 
 		address _token1
 	) external;
