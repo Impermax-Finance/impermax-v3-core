@@ -83,8 +83,8 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		bytes32 hash = UniswapV3Position.getHash(address(this), position.tickLower, position.tickUpper);
 		(,fg0, fg1,,) = IUniswapV3Pool(pool).positions(hash);
 		
-		uint256 delta0 = fg0 > position.feeGrowthInside0LastX128 ? fg0 - position.feeGrowthInside0LastX128 : 0;
-		uint256 delta1 = fg1 > position.feeGrowthInside1LastX128 ? fg1 - position.feeGrowthInside1LastX128 : 0;
+		uint256 delta0 = fg0 - position.feeGrowthInside0LastX128;
+		uint256 delta1 = fg1 - position.feeGrowthInside1LastX128;
 		
 		feeCollected0 = delta0.mul(position.liquidity).div(Q128).add(position.unclaimedFees0);
 		feeCollected1 = delta1.mul(position.liquidity).div(Q128).add(position.unclaimedFees1);
@@ -226,16 +226,26 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		require(positionA.tickLower == positionB.tickLower, "TokenizedUniswapV3Position: INCOMPATIBLE_TOKENS_META");
 		require(positionA.tickUpper == positionB.tickUpper, "TokenizedUniswapV3Position: INCOMPATIBLE_TOKENS_META");
 		
-		// new fee growth is calculated as average of the 2 positions weighted by liquidity
 		uint256 newLiquidity = uint256(positionA.liquidity).add(positionB.liquidity);
-		uint256 newUnclaimedFees0 = positionA.unclaimedFees0.add(positionB.unclaimedFees0);
-		uint256 newUnclaimedFees1 = positionA.unclaimedFees1.add(positionB.unclaimedFees1);
-		uint256 tA0 = positionA.feeGrowthInside0LastX128.mul(positionA.liquidity);
-		uint256 tA1 = positionA.feeGrowthInside1LastX128.mul(positionA.liquidity);
-		uint256 tB0 = positionB.feeGrowthInside0LastX128.mul(positionB.liquidity);
-		uint256 tB1 = positionB.feeGrowthInside1LastX128.mul(positionB.liquidity);
-		uint256 newFeeGrowthInside0LastX128 = tA0.add(tB0).div(newLiquidity).add(1); // round up
-		uint256 newFeeGrowthInside1LastX128 = tA1.add(tB1).div(newLiquidity).add(1); // round up
+		
+		// update feeGrowthInside and feeCollected based on the latest snapshot
+		// it's not necessary to call burn() in order to update the feeGrowthInside of the position
+		uint256 newUnclaimedFees0; uint256 newUnclaimedFees1;
+		address pool = getPool(positionA.fee);
+		(
+			uint256 newFeeGrowthInside0LastX128, 
+			uint256 newFeeGrowthInside1LastX128, 
+			uint256 feeCollectedA0, 
+			uint256 feeCollectedA1
+		) = _getfeeCollectedAndGrowth(positionA, pool);
+		{
+		(
+			uint256 feeCollectedB0, 
+			uint256 feeCollectedB1
+		) = _getFeeCollected(positionB, pool);
+		newUnclaimedFees0 = feeCollectedA0.add(feeCollectedB0);
+		newUnclaimedFees1 = feeCollectedA1.add(feeCollectedB1);
+		}
 		
 		positions[tokenId].liquidity = safe128(newLiquidity);
 		positions[tokenId].feeGrowthInside0LastX128 = newFeeGrowthInside0LastX128;
