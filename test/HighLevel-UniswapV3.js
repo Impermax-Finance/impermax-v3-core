@@ -117,8 +117,7 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		token0 = uniswapV3Pair.obj.token0;		
 		token1 = uniswapV3Pair.obj.token1;		
 		
-		await uniswapV3Pair.setTickCumulatives(0, getTickAtPrice(price) * ORACLE_T);
-		await uniswapV3Pair.setSecondsPerLiquidityCumulativeX128s(0, bnMantissa(1));
+		await tokenizedCLPosition.obj.tokenizedUniswapV3Factory.obj.oracle.setPrice(token0.address, token1.address, sqrtX96(price));
 		await uniswapV3Pair.setMarketPrice(sqrtX96(marketPrice));
 		
 		await token0.setBalanceHarness(uniswapV3Pair.address, bnMantissa(1000000));

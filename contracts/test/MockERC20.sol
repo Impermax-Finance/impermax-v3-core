@@ -69,6 +69,10 @@ contract MockERC20 is IERC20 {
 	function burn(address account, uint256 amount) external {
 		_burn(account, amount);
 	}
+	
+	function setDecimals(uint8 decimals) external {
+		_decimals = decimals;
+	}
 
 	function _transfer(address from, address to, uint256 amount) internal {
 		_balances[from] = _balances[from].sub(amount, "ERC20: transfer amount exceeds balance");

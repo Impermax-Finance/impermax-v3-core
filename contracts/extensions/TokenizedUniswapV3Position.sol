@@ -33,10 +33,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	
 	mapping(uint256 => Position) public positions;
 	uint256 public positionsLength;
-	
-	mapping(uint24 => address) public uniswapV3PoolByFee;
-	address[] public poolsList;
-	
+		
 	/*** Global state ***/
 	
 	// called once by the factory at the time of deployment
@@ -53,16 +50,14 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		oracle = _oracle;
 		token0 = _token0;
 		token1 = _token1;
+		
+		// quickly check if the oracle support this tokens pair
+		oraclePriceSqrtX96();
 	}
 	
-	function getPool(uint24 fee) public returns (address pool) {
-		pool = uniswapV3PoolByFee[fee];
-		if (pool == address(0)) {
-			pool = IUniswapV3Factory(uniswapV3Factory).getPool(token0, token1, fee);
-			require(pool != address(0), "TokenizedUniswapV3Position: UNSUPPORTED_FEE");
-			uniswapV3PoolByFee[fee] = pool;
-			poolsList.push(pool);
-		}
+	function getPool(uint24 fee) public view returns (address pool) {
+		pool = IUniswapV3Factory(uniswapV3Factory).getPool(token0, token1, fee);
+		require(pool != address(0), "TokenizedUniswapV3Position: UNSUPPORTED_FEE");
 	}
 	
 	function _updateBalance(uint24 fee, int24 tickLower, int24 tickUpper) internal {
@@ -73,7 +68,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	}
 	
 	function oraclePriceSqrtX96() public returns (uint256) {
-		return IUniswapV3Oracle(oracle).oraclePriceSqrtX96(poolsList);
+		return IUniswapV3Oracle(oracle).oraclePriceSqrtX96(token0, token1);
 	}
  
 	/*** Position state ***/

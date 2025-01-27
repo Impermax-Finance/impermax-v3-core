@@ -135,7 +135,7 @@ contract('Collateral-UniswapV3', function (accounts) {
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 0.4, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 0.16, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 2, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
-		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 4, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
+		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 4.0004, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 0},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 10, priceA: 0.25, priceB: 3.99, borrowAmountA: 20, borrowAmountB: 0},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 20, borrowAmountB: 40},
 		{safetyMargin: 2.50, liquidationIncentive: 1.01, liquidationFee: 0.08, liquidity: 100, price: 1, priceA: 0.25, priceB: 4, borrowAmountA: 40, borrowAmountB: 30},
@@ -156,6 +156,7 @@ contract('Collateral-UniswapV3', function (accounts) {
 			let collateral;
 			let borrowable0;
 			let borrowable1;
+			let oracle;
 			
 			const {safetyMargin, liquidationIncentive, liquidationFee, liquidity, price, priceA, priceB, borrowAmountA, borrowAmountB} = testCase;
 			const liquidationPenalty = liquidationIncentive + liquidationFee;
@@ -178,6 +179,7 @@ contract('Collateral-UniswapV3', function (accounts) {
 				collateral = await Collateral.new();
 				borrowable0 = await Borrowable.new();
 				borrowable1 = await Borrowable.new();
+				oracle = tokenizedCLPosition.obj.tokenizedUniswapV3Factory.obj.oracle;
 				await borrowable0.setCollateralHarness(collateral.address);
 				await borrowable1.setCollateralHarness(collateral.address);
 				await collateral.setFactoryHarness(factory.address);				
@@ -189,8 +191,13 @@ contract('Collateral-UniswapV3', function (accounts) {
 				await collateral._setLiquidationIncentive(bnMantissa(liquidationIncentive), {from: admin});
 				await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});				
 				
-				await uniswapV3Pair.setTickCumulatives(0, getTickAtPrice(price) * ORACLE_T);
-				await uniswapV3Pair.setSecondsPerLiquidityCumulativeX128s(0, bnMantissa(1));
+				await oracle.setPrice(
+					await tokenizedCLPosition.token0(), 
+					await tokenizedCLPosition.token1(),
+					sqrtX96(Math.pow(1.0001, getTickAtPrice(price)))
+				);
+				//await uniswapV3Pair.setTickCumulatives(0, getTickAtPrice(price) * ORACLE_T);
+				//await uniswapV3Pair.setSecondsPerLiquidityCumulativeX128s(0, bnMantissa(1));
 			});
 			
 			beforeEach(async () => {
@@ -209,14 +216,15 @@ contract('Collateral-UniswapV3', function (accounts) {
 				const positionObject = await collateral.getPositionObject.call(TOKEN_ID);
 				/*console.log("lowestPrice.realX", positionObject.realXYs.lowestPrice.realX / 1e18, realXLowPrice);
 				console.log("lowestPrice.realY", positionObject.realXYs.lowestPrice.realY / 1e18, realYLowPrice);
-				console.log("currentPrice.realX", positionObject.realXYs.currentPrice.realX / 1e18);
-				console.log("currentPrice.realY", positionObject.realXYs.currentPrice.realY / 1e18);
+				console.log("currentPrice.realX", positionObject.realXYs.currentPrice.realX / 1e18, realX);
+				console.log("currentPrice.realY", positionObject.realXYs.currentPrice.realY / 1e18, realY);
 				console.log("highestPrice.realX", positionObject.realXYs.highestPrice.realX / 1e18, realXHighPrice);
 				console.log("highestPrice.realY", positionObject.realXYs.highestPrice.realY / 1e18, realYHighPrice);
 				console.log("debtX", positionObject.debtX / 1e18);
 				console.log("debtY", positionObject.debtY / 1e18);
 				console.log("safetyMarginSqrt", positionObject.safetyMarginSqrt / 1e18);
-				console.log("liquidationPenalty", positionObject.liquidationPenalty / 1e18);*/
+				console.log("liquidationPenalty", positionObject.liquidationPenalty / 1e18);
+				console.log("price", positionObject.priceSqrtX96 * 1);*/
 				expectAlmostEqualMantissa(positionObject.priceSqrtX96, sqrtX96(price));
 				expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realX, bnMantissa(realXLowPrice));
 				expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realY, bnMantissa(realYLowPrice));
