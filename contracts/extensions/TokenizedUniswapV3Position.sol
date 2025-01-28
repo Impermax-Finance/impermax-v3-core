@@ -263,50 +263,47 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		// 1. Initialize and read fee collected
 		address acModule = ITokenizedUniswapV3Factory(factory).acModule();
 		Position memory position = positions[tokenId];
+		Position memory newPosition = positions[tokenId];
 		uint256 feeCollected0; uint256 feeCollected1;
-		{
-			address pool = getPool(position.fee);
-			uint256 fg0; uint256 fg1; 
-			IUniswapV3Pool(pool).burn(position.tickLower, position.tickUpper, 0);
-			(fg0, fg1, feeCollected0, feeCollected1) = _getfeeCollectedAndGrowth(position, pool);
-			require(feeCollected0 > 0 || feeCollected1 > 0, "TokenizedUniswapV3Position: NO_FEES_COLLECTED");
-			positions[tokenId].feeGrowthInside0LastX128 = fg0;
-			positions[tokenId].feeGrowthInside1LastX128 = fg1;
-			
-			emit UpdatePositionFeeGrowthInside(tokenId, fg0, fg1);
-		}
-		
+		address pool = getPool(position.fee);
+		IUniswapV3Pool(pool).burn(position.tickLower, position.tickUpper, 0);
+		(
+			newPosition.feeGrowthInside0LastX128,
+			newPosition.feeGrowthInside1LastX128,
+			feeCollected0,
+			feeCollected1
+		) = _getfeeCollectedAndGrowth(position, pool);
+		require(feeCollected0 > 0 || feeCollected1 > 0, "TokenizedUniswapV3Position: NO_FEES_COLLECTED");
+	
 		// 2. Calculate how much to collect and send it to autocompounder (and update unclaimedFees)
-		bytes memory data;
-		{
-			uint256 collect0; uint256 collect1;
-			(collect0, collect1, data) = IUniswapV3AC(acModule).getToCollect(
-				position, 
-				tokenId, 
-				feeCollected0, 
-				feeCollected1
-			);
-			uint256 unclaimedFees0 = feeCollected0.sub(collect0, "TokenizedUniswapV3Position: COLLECT_0_TOO_HIGH");
-			uint256 unclaimedFees1 = feeCollected1.sub(collect1, "TokenizedUniswapV3Position: COLLECT_1_TOO_HIGH");
-			positions[tokenId].unclaimedFees0 = unclaimedFees0;
-			positions[tokenId].unclaimedFees1 = unclaimedFees1;
-			
-			emit UpdatePositionUnclaimedFees(tokenId, unclaimedFees0, unclaimedFees1);
-			
-			IUniswapV3Pool(getPool(position.fee)).collect(acModule, position.tickLower, position.tickUpper, safe128(collect0), safe128(collect1));
-		}
+		(uint256 collect0, uint256 collect1, bytes memory data) = IUniswapV3AC(acModule).getToCollect(
+			position, 
+			tokenId, 
+			feeCollected0, 
+			feeCollected1
+		);
+		newPosition.unclaimedFees0 = feeCollected0.sub(collect0, "TokenizedUniswapV3Position: COLLECT_0_TOO_HIGH");
+		newPosition.unclaimedFees1 = feeCollected1.sub(collect1, "TokenizedUniswapV3Position: COLLECT_1_TOO_HIGH");
 		
-		// 3. Let the autocompounder convert the fees to liquidity, and update the position
+		IUniswapV3Pool(pool).collect(acModule, position.tickLower, position.tickUpper, safe128(collect0), safe128(collect1));
+		
+		
+		// 3. Let the autocompounder convert the fees to liquidity
+		{
 		uint256 totalBalanceBefore = totalBalance[position.fee][position.tickLower][position.tickUpper];
 		(bounty0, bounty1) = IUniswapV3AC(acModule).mintLiquidity(bountyTo, data);		
 		_updateBalance(position.fee, position.tickLower, position.tickUpper);
 		uint256 newLiquidity = totalBalance[position.fee][position.tickLower][position.tickUpper].sub(totalBalanceBefore);
 		require(newLiquidity > 0, "TokenizedUniswapV3Position: NO_LIQUIDITY_ADDED");
+		newPosition.liquidity = safe128(newLiquidity.add(position.liquidity));
+		}
 		
-		uint128 liquidity = safe128(newLiquidity.add(position.liquidity));
-		positions[tokenId].liquidity = liquidity;
+		// 4. Update the position
+		positions[tokenId] = newPosition;
 		
-		emit UpdatePositionLiquidity(tokenId, liquidity);
+		emit UpdatePositionLiquidity(tokenId, newPosition.liquidity);
+		emit UpdatePositionFeeGrowthInside(tokenId, newPosition.feeGrowthInside0LastX128, newPosition.feeGrowthInside1LastX128);
+		emit UpdatePositionUnclaimedFees(tokenId, newPosition.unclaimedFees0, newPosition.unclaimedFees1);
 	}
 	
 	/*** Utilities ***/
