@@ -23,11 +23,13 @@ contract UniswapV3AC01 is IUniswapV3AC01 {
 	address public reservesPendingAdmin;
 	address public reservesManager;
 	
-	constructor(address _uniswapV3Factory, address _tokenizedUniswapV3Factory, address _reservesAdmin) public {
+	constructor(address _uniswapV3Factory, address _tokenizedUniswapV3Factory, address _reservesAdmin, address _reservesManager) public {
 		uniswapV3Factory = _uniswapV3Factory;
 		tokenizedUniswapV3Factory = _tokenizedUniswapV3Factory;
 		reservesAdmin = _reservesAdmin;
+		reservesManager = _reservesManager;
 		emit NewReservesAdmin(address(0), _reservesAdmin);
+		emit NewReservesManager(address(0), _reservesManager);
 	}
 	
 	/*** Autocompounder ***/

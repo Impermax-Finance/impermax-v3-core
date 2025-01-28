@@ -60,12 +60,16 @@ contract('Factory', function (accounts) {
 			const bDeployer = address(1);
 			const cDeployer = address(2);
 			const uniswapV2Factory = address(3);
-			const factory = await Factory.new(admin, reservesAdmin, bDeployer, cDeployer);
+			await expectRevert(
+				Factory.new(admin, reservesAdmin, address(0), bDeployer, cDeployer), 
+				"Impermax: INVALID_RESERVES_MANAGER"
+			);
+			const factory = await Factory.new(admin, reservesAdmin, reservesManager, bDeployer, cDeployer);
 			expect(await factory.admin()).to.eq(admin);
 			expect(await factory.pendingAdmin()).to.eq(address(0));
 			expect(await factory.reservesAdmin()).to.eq(reservesAdmin);
 			expect(await factory.reservesPendingAdmin()).to.eq(address(0));
-			expect(await factory.reservesManager()).to.eq(address(0));
+			expect(await factory.reservesManager()).to.eq(reservesManager);
 			expectEqual(await factory.allLendingPoolsLength(), 0);
 			expect(await factory.bDeployer()).to.eq(bDeployer);
 			expect(await factory.cDeployer()).to.eq(cDeployer);
@@ -212,8 +216,9 @@ contract('Factory', function (accounts) {
 	
 	describe('admin', () => {
 		let factory;
+		const initialReservesManager = address(11);
 		beforeEach(async () => {
-			factory = await makeFactory({admin, reservesAdmin});
+			factory = await makeFactory({admin, reservesAdmin, reservesManager: initialReservesManager});
 		});
 		it("change admin", async () => {
 			await expectRevert(factory._setPendingAdmin(root, {from: root}), "Impermax: UNAUTHORIZED");
@@ -262,8 +267,9 @@ contract('Factory', function (accounts) {
 		it("change reserves manager", async () => {
 			await expectRevert(factory._setReservesManager(reservesManager, {from: reservesManager}), "Impermax: UNAUTHORIZED");
 			await expectRevert(factory._setReservesManager(reservesManager, {from: admin}), "Impermax: UNAUTHORIZED");
+			await expectRevert(factory._setReservesManager(address(0), {from: reservesAdmin}), "Impermax: INVALID_RESERVES_MANAGER");
 			expectEvent(await factory._setReservesManager(reservesManager, {from: reservesAdmin}), "NewReservesManager", {
-				'oldReservesManager': address(0),
+				'oldReservesManager': initialReservesManager,
 				'newReservesManager': reservesManager,
 			});
 			expect(await factory.reservesManager()).to.eq(reservesManager);

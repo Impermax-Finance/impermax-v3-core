@@ -30,13 +30,16 @@ contract ImpermaxV3Factory is IFactory {
 	IBDeployer public bDeployer;
 	ICDeployer public cDeployer;
 	
-	constructor(address _admin, address _reservesAdmin, IBDeployer _bDeployer, ICDeployer _cDeployer) public {
+	constructor(address _admin, address _reservesAdmin, address _reservesManager, IBDeployer _bDeployer, ICDeployer _cDeployer) public {
+		_checkReservesManager(_reservesManager);
 		admin = _admin;
 		reservesAdmin = _reservesAdmin;
+		reservesManager = _reservesManager;
 		bDeployer = _bDeployer;
 		cDeployer = _cDeployer;
 		emit NewAdmin(address(0), _admin);
 		emit NewReservesAdmin(address(0), _reservesAdmin);
+		emit NewReservesManager(address(0), _reservesManager);
 	}
 	
 	function _getTokens(address nftlp) private view returns (address token0, address token1) {
@@ -125,8 +128,12 @@ contract ImpermaxV3Factory is IFactory {
 		emit NewReservesPendingAdmin(oldReservesPendingAdmin, address(0));
 	}
 
+	function _checkReservesManager(address newReservesManager) internal {
+		require(newReservesManager != address(0), "Impermax: INVALID_RESERVES_MANAGER");
+	}
 	function _setReservesManager(address newReservesManager) external {
 		require(msg.sender == reservesAdmin, "Impermax: UNAUTHORIZED");
+		_checkReservesManager(newReservesManager);
 		address oldReservesManager = reservesManager;
 		reservesManager = newReservesManager;
 		emit NewReservesManager(oldReservesManager, newReservesManager);
