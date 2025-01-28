@@ -7,9 +7,13 @@ import "../../libraries/Math.sol";
 library UniswapV3CollateralMath {
 	using SafeMath for uint;
 
-    uint constant Q32 = 2**32;
-    uint constant Q96 = 2**96;
-    uint constant Q160 = 2**160;
+	// around 2**32
+	uint constant MIN_SQRT_RATIO = 4295128739;
+    
+	// around 2**160
+	uint constant MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
+    
+	uint constant Q96 = 2**96;
 
 	struct PositionObject {
 		uint liquidity;
@@ -23,8 +27,8 @@ library UniswapV3CollateralMath {
 		uint pbSqrtX96
 	) internal pure returns (PositionObject memory) {
 		require(paSqrtX96 < pbSqrtX96, "UniswapV3CollateralMath: PA > PB");
-		require(paSqrtX96 >= Q32, "UniswapV3CollateralMath: PA outside of range");
-		require(pbSqrtX96 < Q160, "UniswapV3CollateralMath: PB outside of range");
+		require(paSqrtX96 >= MIN_SQRT_RATIO, "UniswapV3CollateralMath: PA outside of range");
+		require(pbSqrtX96 < MAX_SQRT_RATIO, "UniswapV3CollateralMath: PB outside of range");
 		return PositionObject({
 			liquidity: liquidity,
 			paSqrtX96: paSqrtX96,
