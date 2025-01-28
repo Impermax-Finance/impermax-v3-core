@@ -8,9 +8,9 @@ interface IUniswapV3AC01 {
 	function uniswapV3Factory() external view returns (address);
 	function tokenizedUniswapV3Factory() external view returns (address);
 	
-	function MAX_REINVEST_BOUNTY() external view returns (address);
-	function MAX_BOUNTY_T() external view returns (address);
-	function PROTOCOL_SHARE() external view returns (address);
+	function MAX_REINVEST_BOUNTY() external view returns (uint256);
+	function MAX_BOUNTY_T() external view returns (uint256);
+	function PROTOCOL_SHARE() external view returns (uint256);
 	
 	function getToCollect(
 		ITokenizedUniswapV3Position.Position calldata position, 
