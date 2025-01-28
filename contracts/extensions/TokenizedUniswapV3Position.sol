@@ -19,6 +19,8 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	
     uint constant Q128 = 2**128;
 
+	uint256 public constant FEE_COLLECTED_WEIGHT = 0.95e18; // 95%
+	
 	address public factory;
 	address public uniswapV3Factory;
 	address public oracle;
@@ -112,12 +114,14 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		uint256 lowestPrice = priceSqrtX96.mul(1e18).div(safetyMarginSqrt);
 		uint256 highestPrice = priceSqrtX96.mul(safetyMarginSqrt).div(1e18);
 		
-		realXYs.lowestPrice.realX = positionObject.getRealX(lowestPrice).add(feeCollectedX);
-		realXYs.lowestPrice.realY = positionObject.getRealY(lowestPrice).add(feeCollectedY);
+		uint256 feeCollectedWeightedX = feeCollectedX.mul(FEE_COLLECTED_WEIGHT).div(1e18);
+		uint256 feeCollectedWeightedY = feeCollectedY.mul(FEE_COLLECTED_WEIGHT).div(1e18);
+		realXYs.lowestPrice.realX = positionObject.getRealX(lowestPrice).add(feeCollectedWeightedX);
+		realXYs.lowestPrice.realY = positionObject.getRealY(lowestPrice).add(feeCollectedWeightedY);
 		realXYs.currentPrice.realX = positionObject.getRealX(currentPrice).add(feeCollectedX);
 		realXYs.currentPrice.realY = positionObject.getRealY(currentPrice).add(feeCollectedY);
-		realXYs.highestPrice.realX = positionObject.getRealX(highestPrice).add(feeCollectedX);
-		realXYs.highestPrice.realY = positionObject.getRealY(highestPrice).add(feeCollectedY);
+		realXYs.highestPrice.realX = positionObject.getRealX(highestPrice).add(feeCollectedWeightedX);
+		realXYs.highestPrice.realY = positionObject.getRealY(highestPrice).add(feeCollectedWeightedY);
 	}
  
 	/*** Interactions ***/
