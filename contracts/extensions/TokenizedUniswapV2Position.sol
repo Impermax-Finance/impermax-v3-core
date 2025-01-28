@@ -110,7 +110,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 	}
 	
 	function split(uint256 tokenId, uint256 percentage) external nonReentrant returns (uint256 newTokenId) {
-		require(percentage < 1e18, "TokenizedUniswapV2Position: ABOVE_100_PERCENT");
+		require(percentage <= 1e18, "TokenizedUniswapV2Position: ABOVE_100_PERCENT");
 		address owner = ownerOf[tokenId];
 		_checkAuthorized(owner, msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
