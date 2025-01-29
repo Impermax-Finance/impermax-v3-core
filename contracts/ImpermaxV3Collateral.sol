@@ -103,8 +103,8 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		require(postLiquidationCollateralRatio < 1e18, "ImpermaxV3Collateral: NOT_UNDERWATER");
 		IBorrowable(borrowable0).restructureDebt(tokenId, postLiquidationCollateralRatio);
 		IBorrowable(borrowable1).restructureDebt(tokenId, postLiquidationCollateralRatio);
-		positionObject = _getPositionObject(tokenId);
-		assert(!positionObject.isUnderwater());
+		
+		blockOfLastRestructureOrLiquidation[tokenId] = block.number;
 		
 		emit RestructureBadDebt(tokenId, postLiquidationCollateralRatio);
 	}
@@ -117,8 +117,11 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		{
 			CollateralMath.PositionObject memory positionObject = _getPositionObject(tokenId);
 			
-			require(positionObject.isLiquidatable(), "ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL");
-			require(!positionObject.isUnderwater(), "ImpermaxV3Collateral: CANNOT_LIQUIDATE_UNDERWATER_POSITION");
+			if (blockOfLastRestructureOrLiquidation[tokenId] != block.number) {
+				require(positionObject.isLiquidatable(), "ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL");
+				require(!positionObject.isUnderwater(), "ImpermaxV3Collateral: CANNOT_LIQUIDATE_UNDERWATER_POSITION");
+				blockOfLastRestructureOrLiquidation[tokenId] = block.number;
+			}
 			
 			uint collateralValue = positionObject.getCollateralValue(CollateralMath.Price.CURRENT);
 			uint repayValue = msg.sender == borrowable0

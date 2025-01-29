@@ -3,6 +3,7 @@ pragma experimental ABIEncoderV2;
 
 import "../../contracts/ImpermaxV3Collateral.sol";
 import "../../contracts/interfaces/INFTLP.sol";
+import "./BorrowableHarness.sol";
 
 contract CollateralHarness is ImpermaxV3Collateral {
 	using CollateralMath for CollateralMath.PositionObject;
@@ -119,5 +120,10 @@ contract CollateralHarness is ImpermaxV3Collateral {
 	// this function must be called from borrowable0 or borrowable1
 	function testReentrancy(address receiver, uint tokenId, bytes calldata data) external nonReentrant {
 		INFTLP(underlying).safeTransferFrom(address(this), receiver, tokenId, data);
+	}
+	
+	function seizeThroughBothBorrowables(uint tokenId, uint repayAmount0, uint repayAmount1, address liquidator) external returns (uint seizeTokenId0, uint seizeTokenId1) {
+		seizeTokenId0 = BorrowableHarness(borrowable0).seizeCollateral(tokenId, repayAmount0, liquidator, bytes(""));
+		seizeTokenId1 = BorrowableHarness(borrowable1).seizeCollateral(tokenId, repayAmount1, liquidator, bytes(""));
 	}
 }

@@ -87,13 +87,17 @@ contract BorrowableHarness is ImpermaxV3Borrowable {
 		borrowTracker = _borrowTracker;
 	}
 	
+	function seizeCollateral(uint tokenId, uint repayAmount, address liquidator, bytes memory data) public returns (uint seizeTokenId) {
+		repayAmount = repayAmount < borrowBalance(tokenId) ? repayAmount : borrowBalance(tokenId);
+		seizeTokenId = ICollateral(collateral).seize(tokenId, repayAmount, liquidator, data);		
+		_borrowBalance[tokenId] -= repayAmount;
+	}
+	
 	function restructureBadDebtAndSeizeCollateral(uint tokenId, uint repayAmount, address liquidator, bytes calldata data) external returns (uint seizeTokenId) {
 		if (ICollateral(collateral).isUnderwater(tokenId)) {
 			ICollateral(collateral).restructureBadDebt(tokenId);
 		}
-		repayAmount = repayAmount < borrowBalance(tokenId) ? repayAmount : borrowBalance(tokenId);
-		seizeTokenId = ICollateral(collateral).seize(tokenId, repayAmount, liquidator, data);		
-		_borrowBalance[tokenId] -= repayAmount;
+		return seizeCollateral(tokenId, repayAmount, liquidator, data);
 	}
 
 }

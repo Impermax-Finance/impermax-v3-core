@@ -19,6 +19,8 @@ const {
 const {
 	address,
 	encode,
+	mineBlock,
+	blockNumber,
 } = require('./Utils/Ethereum');
 const { keccak256, toUtf8Bytes } = require('ethers/utils');
 
@@ -397,6 +399,132 @@ contract('Collateral', function (accounts) {
 					);
 				}
 			});
+		});
+	});
+
+	describe(`restructureBadDebt unliquidatable edge scenario`, () => {
+		let tokenizedCLPosition;
+		let collateral;
+		let borrowable0;
+		let borrowable1;
+		
+		const liquidationIncentive = 1.02;
+		const liquidationFee = 0.02;
+		const liquidationPenalty = liquidationIncentive + liquidationFee;
+				
+		const realXBN = bnMantissa(0);
+		const realYBN = bnMantissa(100);
+		const borrowAmount0BN = bnMantissa(0);
+		const borrowAmount1BN = bnMantissa(200);
+		const liquidateAmount = bnMantissa(50);
+					
+		beforeEach(async () => {
+			tokenizedCLPosition = await makeTokenizedCLPosition();
+			collateral = await Collateral.new();
+			borrowable0 = await Borrowable.new();
+			borrowable1 = await Borrowable.new();
+			await borrowable0.setCollateralHarness(collateral.address);
+			await borrowable1.setCollateralHarness(collateral.address);
+			await collateral.setFactoryHarness(factory.address);				
+			await collateral.setBorrowable0Harness(borrowable0.address);				
+			await collateral.setBorrowable1Harness(borrowable1.address);
+			await collateral.setUnderlyingHarness(tokenizedCLPosition.address);
+			
+			await collateral._setLiquidationIncentive(bnMantissa(liquidationIncentive), {from: admin});
+			await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});
+			await tokenizedCLPosition.setPriceSqrtX96Harness(sqrtX96(1));
+			
+			await tokenizedCLPosition.setPositionHarness(TOKEN_ID, realXBN, realYBN, realXBN, realYBN, realXBN, realYBN);
+			await tokenizedCLPosition.setOwnerHarness(collateral.address, TOKEN_ID);
+			await collateral.setOwnerHarness(borrower, TOKEN_ID);
+			await borrowable0.setBorrowBalanceHarness(TOKEN_ID, ZERO);
+			await borrowable1.setBorrowBalanceHarness(TOKEN_ID, borrowAmount1BN);
+		});
+		
+		it(`isLiquidatable() is false after restructureBadDebt`, async () => {
+			expect(await collateral.isLiquidatable.call(TOKEN_ID)).to.eq(true);
+			expect(await collateral.isUnderwater.call(TOKEN_ID)).to.eq(true);
+			await collateral.restructureBadDebt(TOKEN_ID);
+			expect(await collateral.isLiquidatable.call(TOKEN_ID)).to.eq(false);
+			expect(await collateral.isUnderwater.call(TOKEN_ID)).to.eq(false);
+		});
+		
+		it(`liquidate will revert if it's not done in the same block as restructureBadDebt`, async () => {
+			await expectRevert(borrowable1.seizeCollateral(TOKEN_ID, liquidateAmount, liquidator, "0x"), "ImpermaxV3Collateral: CANNOT_LIQUIDATE_UNDERWATER_POSITION");
+			await collateral.restructureBadDebt(TOKEN_ID);
+			await expectRevert(borrowable1.seizeCollateral(TOKEN_ID, liquidateAmount, liquidator, "0x"), "ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL");
+		});
+		
+		it(`liquidate will succeed if done in the same tx as restructureBadDebt`, async () => {
+			await expectRevert(borrowable1.seizeCollateral(TOKEN_ID, liquidateAmount, liquidator, "0x"), "ImpermaxV3Collateral: CANNOT_LIQUIDATE_UNDERWATER_POSITION");
+			await borrowable1.restructureBadDebtAndSeizeCollateral(TOKEN_ID, liquidateAmount, liquidator, "0x");
+		});
+	});
+	
+
+	describe(`liquidate both sides in the same block`, () => {
+		let tokenizedCLPosition;
+		let collateral;
+		let borrowable0;
+		let borrowable1;
+		
+		const liquidationIncentive = 1.02;
+		const liquidationFee = 0.02;
+		const liquidationPenalty = liquidationIncentive + liquidationFee;
+		const safetyMargin = 2;
+		
+		const realXBN = bnMantissa(100);
+		const realYBN = bnMantissa(100);
+		const realXLowPriceBN = realXBN.mul(sqrtX96(safetyMargin)).div(_2_96);
+		const realYLowPriceBN = realYBN.mul(_2_96).div(sqrtX96(safetyMargin));
+		const realXHighPriceBN = realXBN.mul(_2_96).div(sqrtX96(safetyMargin));
+		const realYHighPriceBN = realYBN.mul(sqrtX96(safetyMargin)).div(_2_96);
+		const borrowAmount0BN = bnMantissa(150);
+		const borrowAmount1BN = bnMantissa(10);
+					
+		beforeEach(async () => {
+			tokenizedCLPosition = await makeTokenizedCLPosition();
+			collateral = await Collateral.new();
+			borrowable0 = await Borrowable.new();
+			borrowable1 = await Borrowable.new();
+			await borrowable0.setCollateralHarness(collateral.address);
+			await borrowable1.setCollateralHarness(collateral.address);
+			await collateral.setFactoryHarness(factory.address);				
+			await collateral.setBorrowable0Harness(borrowable0.address);				
+			await collateral.setBorrowable1Harness(borrowable1.address);
+			await collateral.setUnderlyingHarness(tokenizedCLPosition.address);
+			
+			await collateral._setLiquidationIncentive(bnMantissa(liquidationIncentive), {from: admin});
+			await collateral._setLiquidationFee(bnMantissa(liquidationFee), {from: admin});
+			await collateral._setSafetyMarginSqrt(bnMantissa(Math.sqrt(safetyMargin)), {from: admin});
+			await tokenizedCLPosition.setPriceSqrtX96Harness(sqrtX96(1));
+			
+			await tokenizedCLPosition.setPositionHarness(
+				TOKEN_ID, 
+				realXLowPriceBN,
+				realYLowPriceBN,
+				realXBN,
+				realYBN,
+				realXHighPriceBN,
+				realYHighPriceBN
+			);
+			await tokenizedCLPosition.setOwnerHarness(collateral.address, TOKEN_ID);
+			await collateral.setOwnerHarness(borrower, TOKEN_ID);
+			await borrowable0.setBorrowBalanceHarness(TOKEN_ID, borrowAmount0BN);
+			await borrowable1.setBorrowBalanceHarness(TOKEN_ID, borrowAmount1BN);
+		});
+		
+		it(`second liquidation reverts if the position is healthty after the first liquidation`, async () => {
+			expect(await collateral.isLiquidatable.call(TOKEN_ID)).to.eq(true);
+			expect(await collateral.isUnderwater.call(TOKEN_ID)).to.eq(false);
+			await borrowable0.seizeCollateral(TOKEN_ID, borrowAmount0BN, liquidator, "0x");
+			expect(await collateral.isLiquidatable.call(TOKEN_ID)).to.eq(false);
+			expect(await collateral.isUnderwater.call(TOKEN_ID)).to.eq(false);
+			await expectRevert(borrowable1.seizeCollateral(TOKEN_ID, borrowAmount1BN, liquidator, "0x"), "ImpermaxV3Collateral: INSUFFICIENT_SHORTFALL");
+		});
+		
+		it(`both sides can be liquidated if the 2 liquidations are done in the same tx`, async () => {
+			await collateral.seizeThroughBothBorrowables(TOKEN_ID, borrowAmount0BN, borrowAmount1BN, liquidator);
 		});
 	});
 	
