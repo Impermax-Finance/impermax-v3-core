@@ -69,6 +69,9 @@ contract ImpermaxERC721 is IERC721 {
 		address previousOwner = _update(to, tokenId, address(0));
 		require(previousOwner == address(0), "ImpermaxERC721: INVALID_SENDER");
 	}
+	function _safeMint(address to, uint256 tokenId) internal {
+		_safeMint(to, tokenId, "");
+	}
 	function _safeMint(address to, uint256 tokenId, bytes memory data) internal {
 		_mint(to, tokenId);
 		_checkOnERC721Received(address(0), to, tokenId, data);

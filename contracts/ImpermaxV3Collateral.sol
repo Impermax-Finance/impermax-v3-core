@@ -138,12 +138,17 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 		address reservesManager = IFactory(factory).reservesManager();		
 		if (liquidationFee > 0) {
 			uint feePercentage = repayToCollateralRatio.mul(liquidationFee).div(uint(1e18).sub(seizePercentage));	
-			uint feeTokenId = INFTLP(underlying).split(tokenId, feePercentage);		
-			_mint(reservesManager, feeTokenId);
+			uint feeTokenId = INFTLP(underlying).split(tokenId, feePercentage);
+			_mint(reservesManager, feeTokenId); // _safeMint would be unsafe
 			emit Seize(reservesManager, tokenId, feePercentage, feeTokenId);
 		}
 		
 		INFTLP(underlying).safeTransferFrom(address(this), liquidator, seizeTokenId, data);
 		emit Seize(liquidator, tokenId, seizePercentage, seizeTokenId);
+	}
+	
+	function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data) external pure returns (bytes4 returnValue) {
+		operator; from; tokenId; data;
+		return bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"));
 	}
 }
