@@ -261,7 +261,10 @@ contract('Collateral-UniswapV3', function (accounts) {
 				const collateralValue = await collateral.getCollateralValue.call(TOKEN_ID) / 1e18;
 				const debtValue = await collateral.getDebtValue.call(TOKEN_ID) / 1e18;
 				const collateralNeeded = debtValue * liquidationPenalty;
-				expectAlmostEqualMantissa(bnMantissa(collateralValue - collateralNeeded), await collateral.getLiquidityPostLiquidation.call(TOKEN_ID));
+				expectAlmostEqualMantissa(
+					bnMantissa((collateralValue - collateralNeeded) / 1e12), 
+					(await collateral.getLiquidityPostLiquidation.call(TOKEN_ID)).div(new BN(1e12))
+				);
 			});
 			
 			it(`getPostLiquidationCollateralRatio`, async () => {
