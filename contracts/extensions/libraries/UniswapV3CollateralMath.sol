@@ -28,7 +28,7 @@ library UniswapV3CollateralMath {
 	) internal pure returns (PositionObject memory) {
 		require(paSqrtX96 < pbSqrtX96, "UniswapV3CollateralMath: PA > PB");
 		require(paSqrtX96 >= MIN_SQRT_RATIO, "UniswapV3CollateralMath: PA outside of range");
-		require(pbSqrtX96 < MAX_SQRT_RATIO, "UniswapV3CollateralMath: PB outside of range");
+		require(pbSqrtX96 <= MAX_SQRT_RATIO, "UniswapV3CollateralMath: PB outside of range");
 		return PositionObject({
 			liquidity: liquidity,
 			paSqrtX96: paSqrtX96,
