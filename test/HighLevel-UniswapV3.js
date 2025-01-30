@@ -137,11 +137,12 @@ contract('Highlevel-UniswapV3', function (accounts) {
 	it(`mint`, async () => {
 		await uniswapV3Pair.setPosition(tokenizedCLPosition.address, tickA, tickB, bnMantissa(currentLiquidity), {from: router});
 		TOKEN_ID = await tokenizedCLPosition.mint.call(collateral.address, FEE, tickA, tickB);
+		await tokenizedCLPosition.mint(user, FEE, tickA, tickB, {from: router});
 		await expectRevert(
 			collateral.mint(user, TOKEN_ID,  {from: router}),
 			"ImpermaxV3Collateral: NFT_NOT_RECEIVED"
 		);
-		await tokenizedCLPosition.mint(collateral.address, FEE, tickA, tickB, {from: router});
+		await tokenizedCLPosition.transferFrom(user, collateral.address, TOKEN_ID, {from: user});
 		await collateral.mint(user, TOKEN_ID,  {from: router});
 		await expectRevert(
 			collateral.mint(user, TOKEN_ID,  {from: router}),

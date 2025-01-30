@@ -16,9 +16,9 @@ contract ImpermaxERC721Harness is ImpermaxERC721 {
 	}
 	
 	function setOwnerHarness(address to, uint tokenId) external {
-		address prevOwner = ownerOf[tokenId];
+		address prevOwner = _ownerOf[tokenId];
 		if (prevOwner != address(0)) balanceOf[prevOwner]--;
-		ownerOf[tokenId] = to;
+		_ownerOf[tokenId] = to;
 		balanceOf[to]++;
 	}
 }

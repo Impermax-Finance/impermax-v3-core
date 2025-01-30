@@ -101,7 +101,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		(uint256 feeCollectedX, uint256 feeCollectedY) = _getFeeCollected(position, pool);
 	
 		require(safetyMarginSqrt >= 1e18, "TokenizedUniswapV3Position: INVALID_SAFETY_MARGIN");
-		require(ownerOf[tokenId] != address(0), "TokenizedUniswapV3Position: UNINITIALIZED_POSITION");
+		_requireOwned(tokenId);
 		
 		uint160 pa = position.tickLower.getSqrtRatioAtTick();
 		uint160 pb = position.tickUpper.getSqrtRatioAtTick();
@@ -158,7 +158,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 
 	// this low-level function should be called from another contract
 	function redeem(address to, uint256 tokenId) external nonReentrant returns (uint256 amount0, uint256 amount1) {
-		_checkAuthorized(ownerOf[tokenId], msg.sender, tokenId);
+		_checkAuthorized(_requireOwned(tokenId), msg.sender, tokenId);
 		
 		Position memory position = positions[tokenId];
 		delete positions[tokenId];
@@ -184,7 +184,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	}
 	function split(uint256 tokenId, uint256 percentage) external nonReentrant returns (uint256 newTokenId) {
 		require(percentage <= 1e18, "TokenizedUniswapV3Position: ABOVE_100_PERCENT");
-		address owner = ownerOf[tokenId];
+		address owner = _requireOwned(tokenId);
 		_checkAuthorized(owner, msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
 		
@@ -217,7 +217,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	}
 	
 	function join(uint256 tokenId, uint256 tokenToJoin) external nonReentrant {
-		_checkAuthorized(ownerOf[tokenToJoin], msg.sender, tokenToJoin);
+		_checkAuthorized(_requireOwned(tokenToJoin), msg.sender, tokenToJoin);
 		
 		Position memory positionA = positions[tokenId];
 		Position memory positionB = positions[tokenToJoin];

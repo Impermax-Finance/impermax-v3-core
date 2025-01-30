@@ -36,7 +36,7 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 	/*** ERC721 Wrapper ***/
 	
 	function mint(address to, uint256 tokenId) external nonReentrant {
-		require(ownerOf[tokenId] == address(0), "ImpermaxV3Collateral: NFT_ALREADY_MINTED");
+		require(_ownerOf[tokenId] == address(0), "ImpermaxV3Collateral: NFT_ALREADY_MINTED");
 		require(INFTLP(underlying).ownerOf(tokenId) == address(this), "ImpermaxV3Collateral: NFT_NOT_RECEIVED");
 		_mint(to, tokenId);
 		emit Mint(to, tokenId);
@@ -44,7 +44,7 @@ contract ImpermaxV3Collateral is ICollateral, CSetter {
 
 	function redeem(address to, uint256 tokenId, uint256 percentage, bytes memory data) public nonReentrant returns (uint256 redeemTokenId) {
 		require(percentage <= 1e18, "ImpermaxV3Collateral: PERCENTAGE_ABOVE_100");
-		_checkAuthorized(ownerOf[tokenId], msg.sender, tokenId);
+		_checkAuthorized(_requireOwned(tokenId), msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
 				
 		// optimistically redeem

@@ -30,7 +30,7 @@ contract MockTokenizedCLPosition is INFTLP, ImpermaxERC721 {
 	
 	function split(uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId) {
 		require(percentage <= 1e18, "ImpermaxV3Borrowable: ABOVE_100_PERCENT");
-		address owner = ownerOf[tokenId];
+		address owner = _ownerOf[tokenId];
 		_checkAuthorized(owner, msg.sender, tokenId);
 		newTokenId = positionLength++;
 		_mint(owner, newTokenId);
@@ -80,9 +80,9 @@ contract MockTokenizedCLPosition is INFTLP, ImpermaxERC721 {
 	}
 	
 	function setOwnerHarness(address to, uint tokenId) external {
-		address prevOwner = ownerOf[tokenId];
+		address prevOwner = _ownerOf[tokenId];
 		if (prevOwner != address(0)) balanceOf[prevOwner]--;
-		ownerOf[tokenId] = to;
+		_ownerOf[tokenId] = to;
 		balanceOf[to]++;
 	}
 	

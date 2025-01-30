@@ -25,9 +25,9 @@ contract CollateralHarness is ImpermaxV3Collateral {
 	}
 	
 	function setOwnerHarness(address to, uint tokenId) external {
-		address prevOwner = ownerOf[tokenId];
+		address prevOwner = _ownerOf[tokenId];
 		if (prevOwner != address(0)) balanceOf[prevOwner]--;
-		ownerOf[tokenId] = to;
+		_ownerOf[tokenId] = to;
 		balanceOf[to]++;
 	}
 	

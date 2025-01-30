@@ -99,7 +99,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 
 	// this low-level function should be called from another contract
 	function redeem(address to, uint256 tokenId) external nonReentrant update returns (uint256 redeemAmount) {
-		_checkAuthorized(ownerOf[tokenId], msg.sender, tokenId);
+		_checkAuthorized(_requireOwned(tokenId), msg.sender, tokenId);
 		
 		redeemAmount = liquidity[tokenId];
 		liquidity[tokenId] = 0;
@@ -111,7 +111,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 	
 	function split(uint256 tokenId, uint256 percentage) external nonReentrant returns (uint256 newTokenId) {
 		require(percentage <= 1e18, "TokenizedUniswapV2Position: ABOVE_100_PERCENT");
-		address owner = ownerOf[tokenId];
+		address owner = _requireOwned(tokenId);
 		_checkAuthorized(owner, msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
 		
@@ -128,7 +128,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 	}
 	
 	function join(uint256 tokenId, uint256 tokenToJoin) external nonReentrant {
-		_checkAuthorized(ownerOf[tokenToJoin], msg.sender, tokenToJoin);
+		_checkAuthorized(_requireOwned(tokenToJoin), msg.sender, tokenToJoin);
 		require(tokenId != tokenToJoin, "TokenizedUniswapV3Position: SAME_ID");
 		
 		uint256 initialLiquidity = liquidity[tokenId];
