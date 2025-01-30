@@ -2,6 +2,7 @@ pragma solidity =0.5.16;
 pragma experimental ABIEncoderV2;
 
 import "../interfaces/IERC20.sol";
+import "../libraries/Math.sol";
 import "../libraries/SafeMath.sol";
 import "./interfaces/ITokenizedUniswapV3Factory.sol";
 import "./interfaces/ITokenizedUniswapV3Position.sol";
@@ -9,13 +10,12 @@ import "./interfaces/IUniswapV3Factory.sol";
 import "./interfaces/IUniswapV3Pool.sol";
 import "./interfaces/IUniswapV3AC01.sol";
 import "./libraries/TransferHelper.sol";
-import "./libraries/UniswapV3CollateralMath.sol";
+import "./libraries/LiquidityAmounts.sol";
 import "./libraries/TickMath.sol";
 
 contract UniswapV3AC01 is IUniswapV3AC01 {
 	using SafeMath for uint256;
 	using TickMath for int24;
-	using UniswapV3CollateralMath for UniswapV3CollateralMath.PositionObject;
 	
 	address public uniswapV3Factory;
 	address public tokenizedUniswapV3Factory;
@@ -108,17 +108,16 @@ contract UniswapV3AC01 is IUniswapV3AC01 {
 	
 		// 1. Initialize
 		address pool = ITokenizedUniswapV3Position(msg.sender).getPool(position.fee);
-		(uint256 priceSqrtX96,,,,,,) = IUniswapV3Pool(pool).slot0();
+		(uint160 priceSqrtX96,,,,,,) = IUniswapV3Pool(pool).slot0();
 		uint256 reinvestBounty = _getBounty(msg.sender, tokenId);
 
 		// 2. Read position proportion
-		UniswapV3CollateralMath.PositionObject memory positionObject = UniswapV3CollateralMath.newPosition(
-			position.liquidity,
-			position.tickLower.getSqrtRatioAtTick(),
-			position.tickUpper.getSqrtRatioAtTick()
+		(uint256 realX, uint256 realY) = LiquidityAmounts.getAmountsForLiquidity(
+			priceSqrtX96, 
+			position.tickLower.getSqrtRatioAtTick(), 
+			position.tickUpper.getSqrtRatioAtTick(), 
+			position.liquidity
 		);
-		uint256 realX = positionObject.getRealX(priceSqrtX96);
-		uint256 realY = positionObject.getRealY(priceSqrtX96);
 		
 		// 3. Calculate how much of the earned fee we can compound for each side
 		uint256 newLiquidity;

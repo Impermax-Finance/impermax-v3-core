@@ -9,13 +9,12 @@ import "./interfaces/IUniswapV3AC.sol";
 import "./interfaces/IUniswapV3Oracle.sol";
 import "./interfaces/ITokenizedUniswapV3Position.sol";
 import "./interfaces/ITokenizedUniswapV3Factory.sol";
-import "./libraries/UniswapV3CollateralMath.sol";
+import "./libraries/LiquidityAmounts.sol";
 import "./libraries/UniswapV3Position.sol";
 import "./libraries/TickMath.sol";
 
 contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, ImpermaxERC721 {
 	using TickMath for int24;
-	using UniswapV3CollateralMath for UniswapV3CollateralMath.PositionObject;
 	
     uint constant Q128 = 2**128;
 
@@ -103,25 +102,28 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	
 		require(safetyMarginSqrt >= 1e18, "TokenizedUniswapV3Position: INVALID_SAFETY_MARGIN");
 		require(ownerOf[tokenId] != address(0), "TokenizedUniswapV3Position: UNINITIALIZED_POSITION");
-		UniswapV3CollateralMath.PositionObject memory positionObject = UniswapV3CollateralMath.newPosition(
-			position.liquidity,
-			position.tickLower.getSqrtRatioAtTick(),
-			position.tickUpper.getSqrtRatioAtTick()
-		);
+		
+		uint160 pa = position.tickLower.getSqrtRatioAtTick();
+		uint160 pb = position.tickUpper.getSqrtRatioAtTick();
 		
 		priceSqrtX96 = oraclePriceSqrtX96();
-		uint256 currentPrice = priceSqrtX96;
-		uint256 lowestPrice = priceSqrtX96.mul(1e18).div(safetyMarginSqrt);
-		uint256 highestPrice = priceSqrtX96.mul(safetyMarginSqrt).div(1e18);
+		uint160 currentPrice = safe160(priceSqrtX96);
+		uint160 lowestPrice = safe160(priceSqrtX96.mul(1e18).div(safetyMarginSqrt));
+		uint160 highestPrice = safe160(priceSqrtX96.mul(safetyMarginSqrt).div(1e18));
+		
+		(realXYs.lowestPrice.realX, realXYs.lowestPrice.realY) = LiquidityAmounts.getAmountsForLiquidity(lowestPrice, pa, pb, position.liquidity);
+		(realXYs.currentPrice.realX, realXYs.currentPrice.realY) = LiquidityAmounts.getAmountsForLiquidity(currentPrice, pa, pb, position.liquidity);
+		(realXYs.highestPrice.realX, realXYs.highestPrice.realY) = LiquidityAmounts.getAmountsForLiquidity(highestPrice, pa, pb, position.liquidity);
 		
 		uint256 feeCollectedWeightedX = feeCollectedX.mul(FEE_COLLECTED_WEIGHT).div(1e18);
 		uint256 feeCollectedWeightedY = feeCollectedY.mul(FEE_COLLECTED_WEIGHT).div(1e18);
-		realXYs.lowestPrice.realX = positionObject.getRealX(lowestPrice).add(feeCollectedWeightedX);
-		realXYs.lowestPrice.realY = positionObject.getRealY(lowestPrice).add(feeCollectedWeightedY);
-		realXYs.currentPrice.realX = positionObject.getRealX(currentPrice).add(feeCollectedX);
-		realXYs.currentPrice.realY = positionObject.getRealY(currentPrice).add(feeCollectedY);
-		realXYs.highestPrice.realX = positionObject.getRealX(highestPrice).add(feeCollectedWeightedX);
-		realXYs.highestPrice.realY = positionObject.getRealY(highestPrice).add(feeCollectedWeightedY);
+		
+		realXYs.lowestPrice.realX += feeCollectedWeightedX;
+		realXYs.lowestPrice.realY += feeCollectedWeightedY; 
+		realXYs.currentPrice.realX += feeCollectedX;
+		realXYs.currentPrice.realY += feeCollectedY;
+		realXYs.highestPrice.realX += feeCollectedWeightedX;
+		realXYs.highestPrice.realY += feeCollectedWeightedY;
 	}
  
 	/*** Interactions ***/
@@ -315,6 +317,11 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
     function safe128(uint n) internal pure returns (uint128) {
         require(n < 2**128, "Impermax: SAFE128");
         return uint128(n);
+    }
+
+    function safe160(uint n) internal pure returns (uint160) {
+        require(n < 2**160, "Impermax: SAFE160");
+        return uint160(n);
     }
 	
 	// prevents a contract from calling itself, directly or indirectly.
