@@ -6,7 +6,7 @@ import "../interfaces/INFTLP.sol";
 import "./interfaces/IUniswapV3Factory.sol";
 import "./interfaces/IUniswapV3Pool.sol";
 import "./interfaces/IUniswapV3AC.sol";
-import "./interfaces/IUniswapV3Oracle.sol";
+import "./interfaces/IV3Oracle.sol";
 import "./interfaces/ITokenizedUniswapV3Position.sol";
 import "./interfaces/ITokenizedUniswapV3Factory.sol";
 import "./libraries/LiquidityAmounts.sol";
@@ -69,7 +69,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	}
 	
 	function oraclePriceSqrtX96() public returns (uint256) {
-		return IUniswapV3Oracle(oracle).oraclePriceSqrtX96(token0, token1);
+		return IV3Oracle(oracle).oraclePriceSqrtX96(token0, token1);
 	}
  
 	/*** Position state ***/

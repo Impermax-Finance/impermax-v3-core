@@ -1,8 +1,8 @@
 pragma solidity =0.5.16;
 
-import "../../contracts/extensions/interfaces/IUniswapV3Oracle.sol";
+import "../../contracts/extensions/interfaces/IV3Oracle.sol";
 
-contract MockUniswapV3Oracle is IUniswapV3Oracle {
+contract MockUniswapV3Oracle is IV3Oracle {
 	
 	constructor() public {}
 	

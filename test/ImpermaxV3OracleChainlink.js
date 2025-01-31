@@ -14,7 +14,7 @@ const {
 } = require('./Utils/Ethereum');
 const { keccak256, toUtf8Bytes } = require('ethers/utils');
 
-const UniswapV3OracleChainlink = artifacts.require('UniswapV3OracleChainlink');
+const ImpermaxV3OracleChainlink = artifacts.require('ImpermaxV3OracleChainlink');
 const ERC20 = artifacts.require('MockERC20');
 const Aggregator = artifacts.require('MockAggregator');
 
@@ -49,7 +49,7 @@ const totalGained1B = 15;
 const totalGained0C = 3;
 const totalGained1C = 35;
 
-contract('Oracle-UniswapV3Chainlink', function (accounts) {
+contract('ImpermaxV3OracleChainlink', function (accounts) {
 	let root = accounts[0];
 	let user = accounts[1];
 	let admin = accounts[2];
@@ -59,12 +59,12 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 	describe('admin', () => {
 		let oracle;
 		beforeEach(async () => {
-			oracle = await UniswapV3OracleChainlink.new(admin);
+			oracle = await ImpermaxV3OracleChainlink.new(admin);
 		});
 		it("change admin", async () => {
-			await expectRevert(oracle._setPendingAdmin(root, {from: root}), "UniswapV3OracleChainlink: UNAUTHORIZED");
-			await expectRevert(oracle._setPendingAdmin(root, {from: user}), "UniswapV3OracleChainlink: UNAUTHORIZED");
-			await expectRevert(oracle._acceptAdmin({from: root}), "UniswapV3OracleChainlink: UNAUTHORIZED");
+			await expectRevert(oracle._setPendingAdmin(root, {from: root}), "ImpermaxV3OracleChainlink: UNAUTHORIZED");
+			await expectRevert(oracle._setPendingAdmin(root, {from: user}), "ImpermaxV3OracleChainlink: UNAUTHORIZED");
+			await expectRevert(oracle._acceptAdmin({from: root}), "ImpermaxV3OracleChainlink: UNAUTHORIZED");
 			expectEvent(await oracle._setPendingAdmin(root, {from: admin}), "NewPendingAdmin", {
 				'oldPendingAdmin': address(0),
 				'newPendingAdmin': root,
@@ -86,7 +86,7 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 		it("change fallback oracle", async () => {
 			const fallbackOracle = address(1);
 			expect(await oracle.fallbackOracle()).to.eq(address(0));
-			await expectRevert(oracle._setFallbackOracle(fallbackOracle, {from: root}), "UniswapV3OracleChainlink: UNAUTHORIZED");
+			await expectRevert(oracle._setFallbackOracle(fallbackOracle, {from: root}), "ImpermaxV3OracleChainlink: UNAUTHORIZED");
 			expectEvent(await oracle._setFallbackOracle(fallbackOracle, {from: admin}), "NewFallbackOracle", {
 				'oldFallbackOracle': address(0),
 				'newFallbackOracle': fallbackOracle,
@@ -97,7 +97,7 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 		});
 		it("change verifyTokenSource", async () => {
 			expect(await oracle.verifyTokenSource()).to.eq(true);
-			await expectRevert(oracle._setVerifyTokenSource(false, {from: root}), "UniswapV3OracleChainlink: UNAUTHORIZED");
+			await expectRevert(oracle._setVerifyTokenSource(false, {from: root}), "ImpermaxV3OracleChainlink: UNAUTHORIZED");
 			expectEvent(await oracle._setVerifyTokenSource(false, {from: admin}), "SetVerifyTokenSource", {
 				'enable': false,
 			});
@@ -118,10 +118,10 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 			const addTokens4 = [tokens[3], tokens[4]];
 			const addSources4 = [sources[3], sources[4]];
 			
-			await expectRevert(oracle._addTokenSources(addTokens1, addSources1, {from: root}), "UniswapV3OracleChainlink: UNAUTHORIZED");
+			await expectRevert(oracle._addTokenSources(addTokens1, addSources1, {from: root}), "ImpermaxV3OracleChainlink: UNAUTHORIZED");
 			await oracle._addTokenSources(addTokens1, addSources1, {from: admin});
-			await expectRevert(oracle._addTokenSources(addTokens2, addSources2, {from: admin}), "UniswapV3OracleChainlink: TOKEN_INITIALIZED");
-			await expectRevert(oracle._addTokenSources(addTokens3, addSources3, {from: admin}), "UniswapV3OracleChainlink: INCONSISTENT_PARAMS_LENGTH");
+			await expectRevert(oracle._addTokenSources(addTokens2, addSources2, {from: admin}), "ImpermaxV3OracleChainlink: TOKEN_INITIALIZED");
+			await expectRevert(oracle._addTokenSources(addTokens3, addSources3, {from: admin}), "ImpermaxV3OracleChainlink: INCONSISTENT_PARAMS_LENGTH");
 			await oracle._addTokenSources(addTokens4, addSources4, {from: admin});
 			
 			expect((await oracle.tokenSources(tokens[0])).toLowerCase()).to.eq(sources[0].toLowerCase());
@@ -144,9 +144,9 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 			
 			// Price out of range
 			await source.setLatestAnswer(100);
-			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: PRICE_OUT_OF_RANGE");
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "ImpermaxV3OracleChainlink: PRICE_OUT_OF_RANGE");
 			await source.setLatestAnswer(X128(1));
-			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: PRICE_OUT_OF_RANGE");
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "ImpermaxV3OracleChainlink: PRICE_OUT_OF_RANGE");
 			await source.setLatestAnswer("101");
 			await oracle._addTokenSources.call([token.address], [source.address], {from: admin});
 			await source.setLatestAnswer(X96(1));
@@ -155,10 +155,10 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 			// Decimals out of range
 			await token.setDecimals(4);
 			await source.setDecimals(3);
-			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: DECIMALS_OUT_OF_RANGE");
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "ImpermaxV3OracleChainlink: DECIMALS_OUT_OF_RANGE");
 			await token.setDecimals(18);
 			await source.setDecimals(31);
-			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: DECIMALS_OUT_OF_RANGE");
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "ImpermaxV3OracleChainlink: DECIMALS_OUT_OF_RANGE");
 			await source.setDecimals(30);
 			await oracle._addTokenSources.call([token.address], [source.address], {from: admin});
 			await token.setDecimals(4);
@@ -167,9 +167,9 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 			
 			// Inconsistent description
 			await source.setDescription("XYZ / EUR");
-			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: INCONSISTENT_DESCRIPTION");
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "ImpermaxV3OracleChainlink: INCONSISTENT_DESCRIPTION");
 			await source.setDescription("ETH / USD");
-			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: INCONSISTENT_DESCRIPTION");
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "ImpermaxV3OracleChainlink: INCONSISTENT_DESCRIPTION");
 		});
 	});
 	
@@ -195,8 +195,8 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 		
 		before(async () => {
 			// oracles
-			oracle = 			await UniswapV3OracleChainlink.new(admin);
-			fallbackOracle = 	await UniswapV3OracleChainlink.new(admin);
+			oracle = 			await ImpermaxV3OracleChainlink.new(admin);
+			fallbackOracle = 	await ImpermaxV3OracleChainlink.new(admin);
 			await oracle._setVerifyTokenSource(false, {from: admin});
 			await fallbackOracle._setVerifyTokenSource(false, {from: admin});
 			
@@ -248,11 +248,11 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 		it("revert if bad price and no fallback", async () => {
 			await expectRevert(
 				oracle.oraclePriceSqrtX96.call(token0.address, token2.address), 
-				"UniswapV3OracleChainlink: PRICE_CALCULATION_ERROR"
+				"ImpermaxV3OracleChainlink: PRICE_CALCULATION_ERROR"
 			);
 			await expectRevert(
 				oracle.oraclePriceSqrtX96.call(token2.address, token0.address), 
-				"UniswapV3OracleChainlink: PRICE_CALCULATION_ERROR"
+				"ImpermaxV3OracleChainlink: PRICE_CALCULATION_ERROR"
 			);
 		});
 		
@@ -267,22 +267,22 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 		it("revert if bad price and usupported by fallback", async () => {
 			await expectRevert(
 				oracle.oraclePriceSqrtX96.call(token1.address, token2.address), 
-				"UniswapV3OracleChainlink: UNSUPPORTED_PAIR"
+				"ImpermaxV3OracleChainlink: UNSUPPORTED_PAIR"
 			);
 			await expectRevert(
 				oracle.oraclePriceSqrtX96.call(token2.address, token1.address), 
-				"UniswapV3OracleChainlink: UNSUPPORTED_PAIR"
+				"ImpermaxV3OracleChainlink: UNSUPPORTED_PAIR"
 			);
 		});
 		
 		it("revert if pair is unsupported", async () => {
 			await expectRevert(
 				oracle.oraclePriceSqrtX96.call(unsupportedToken.address, token0.address), 
-				"UniswapV3OracleChainlink: UNSUPPORTED_PAIR"
+				"ImpermaxV3OracleChainlink: UNSUPPORTED_PAIR"
 			);
 			await expectRevert(
 				oracle.oraclePriceSqrtX96.call(token0.address, unsupportedToken.address), 
-				"UniswapV3OracleChainlink: UNSUPPORTED_PAIR"
+				"ImpermaxV3OracleChainlink: UNSUPPORTED_PAIR"
 			);
 		});
 	});
@@ -321,7 +321,7 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 				const priceOracle0 = Math.floor(realPrice0 * Math.pow(10, do0));
 				const priceOracle1 = Math.floor(realPrice1 * Math.pow(10, do1));
 				
-				const oracle = await UniswapV3OracleChainlink.new(admin);
+				const oracle = await ImpermaxV3OracleChainlink.new(admin);
 				await oracle._setVerifyTokenSource(false, {from: admin});
 				
 				const token0 = await ERC20.new("", "");
