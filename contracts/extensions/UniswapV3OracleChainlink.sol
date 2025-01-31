@@ -26,7 +26,7 @@ contract UniswapV3OracleChainlink is IUniswapV3Oracle {
 	event NewPendingAdmin(address oldPendingAdmin, address newPendingAdmin);
 	event NewAdmin(address oldAdmin, address newAdmin);
 	event NewFallbackOracle(address oldFallbackOracle, address newFallbackOracle);
-	event TokenSourceCreated(address oldAdmin, address newAdmin);
+	event TokenSourceCreated(address token, address source);
 	
 	constructor(address _admin) public {
 		admin = _admin;
