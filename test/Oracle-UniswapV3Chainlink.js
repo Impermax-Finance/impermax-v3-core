@@ -95,7 +95,18 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 			await oracle._setFallbackOracle(root, {from: admin});
 			expect(await oracle.fallbackOracle()).to.eq(root);
 		});
+		it("change verifyTokenSource", async () => {
+			expect(await oracle.verifyTokenSource()).to.eq(true);
+			await expectRevert(oracle._setVerifyTokenSource(false, {from: root}), "UniswapV3OracleChainlink: UNAUTHORIZED");
+			expectEvent(await oracle._setVerifyTokenSource(false, {from: admin}), "SetVerifyTokenSource", {
+				'enable': false,
+			});
+			expect(await oracle.verifyTokenSource()).to.eq(false);
+			await oracle._setVerifyTokenSource(true, {from: admin});
+			expect(await oracle.verifyTokenSource()).to.eq(true);
+		});
 		it("add token sources", async () => {
+			await oracle._setVerifyTokenSource(false, {from: admin});
 			const tokens = [address(1), address(2), address(3), address(4), address(5)];
 			const sources = [address(11), address(12), address(13), address(14), address(15)];
 			const addTokens1 = [tokens[0], tokens[1], tokens[2]];
@@ -118,6 +129,47 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 			expect((await oracle.tokenSources(tokens[2])).toLowerCase()).to.eq(sources[2].toLowerCase());
 			expect((await oracle.tokenSources(tokens[3])).toLowerCase()).to.eq(sources[3].toLowerCase());
 			expect((await oracle.tokenSources(tokens[4])).toLowerCase()).to.eq(sources[4].toLowerCase());
+		});
+		it("test verifyTokenSource", async () => {
+			token = await ERC20.new("", "XYZ");
+			source = await Aggregator.new();
+			
+			await token.setDecimals(18);
+			await source.setDecimals(8);
+			await source.setDescription("XYZ / USD");
+			await source.setLatestAnswer(oneMantissa);
+			
+			// Verification passes
+			await oracle._addTokenSources.call([token.address], [source.address], {from: admin});
+			
+			// Price out of range
+			await source.setLatestAnswer(100);
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: PRICE_OUT_OF_RANGE");
+			await source.setLatestAnswer(X128(1));
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: PRICE_OUT_OF_RANGE");
+			await source.setLatestAnswer("101");
+			await oracle._addTokenSources.call([token.address], [source.address], {from: admin});
+			await source.setLatestAnswer(X96(1));
+			await oracle._addTokenSources.call([token.address], [source.address], {from: admin});
+			
+			// Decimals out of range
+			await token.setDecimals(4);
+			await source.setDecimals(3);
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: DECIMALS_OUT_OF_RANGE");
+			await token.setDecimals(18);
+			await source.setDecimals(31);
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: DECIMALS_OUT_OF_RANGE");
+			await source.setDecimals(30);
+			await oracle._addTokenSources.call([token.address], [source.address], {from: admin});
+			await token.setDecimals(4);
+			await source.setDecimals(4);
+			await oracle._addTokenSources.call([token.address], [source.address], {from: admin});
+			
+			// Inconsistent description
+			await source.setDescription("XYZ / EUR");
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: INCONSISTENT_DESCRIPTION");
+			await source.setDescription("ETH / USD");
+			await expectRevert(oracle._addTokenSources.call([token.address], [source.address], {from: admin}), "UniswapV3OracleChainlink: INCONSISTENT_DESCRIPTION");
 		});
 	});
 	
@@ -145,6 +197,8 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 			// oracles
 			oracle = 			await UniswapV3OracleChainlink.new(admin);
 			fallbackOracle = 	await UniswapV3OracleChainlink.new(admin);
+			await oracle._setVerifyTokenSource(false, {from: admin});
+			await fallbackOracle._setVerifyTokenSource(false, {from: admin});
 			
 			// tokens
 			unsupportedToken =	await ERC20.new("", "");
@@ -268,6 +322,7 @@ contract('Oracle-UniswapV3Chainlink', function (accounts) {
 				const priceOracle1 = Math.floor(realPrice1 * Math.pow(10, do1));
 				
 				const oracle = await UniswapV3OracleChainlink.new(admin);
+				await oracle._setVerifyTokenSource(false, {from: admin});
 				
 				const token0 = await ERC20.new("", "");
 				const token1 = await ERC20.new("", "");

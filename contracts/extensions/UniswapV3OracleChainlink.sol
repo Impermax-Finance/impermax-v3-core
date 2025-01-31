@@ -6,9 +6,11 @@ import "./interfaces/AggregatorInterface.sol";
 import "../interfaces/IERC20.sol";
 import "../libraries/SafeMath.sol";
 import "../libraries/Math.sol";
+import "./libraries/StringHelpers.sol";
 
 contract UniswapV3OracleChainlink is IUniswapV3Oracle {
 	using SafeMath for uint256;
+	using StringHelpers for string;
 
 	uint constant Q128 = 2**128;
 	uint constant Q96 = 2**96;
@@ -21,16 +23,24 @@ contract UniswapV3OracleChainlink is IUniswapV3Oracle {
 	address public fallbackOracle;
 
 	// Once created, token sources are immutable
+	// All sources should be USD denominated
 	mapping(address => address) public tokenSources;
+	
+	// If this is true, it prevents the admin to add the wrong source for a token by mistake
+	// The admin could still add malicious sources for new tokens -> always double check a source before adding it
+	bool public verifyTokenSource;
 	
 	event NewPendingAdmin(address oldPendingAdmin, address newPendingAdmin);
 	event NewAdmin(address oldAdmin, address newAdmin);
 	event NewFallbackOracle(address oldFallbackOracle, address newFallbackOracle);
+	event SetVerifyTokenSource(bool enable);
 	event TokenSourceCreated(address token, address source);
 	
 	constructor(address _admin) public {
 		admin = _admin;
+		verifyTokenSource = true;
 		emit NewAdmin(address(0), _admin);
+		emit SetVerifyTokenSource(true);
 	}
 	
 	function oraclePriceSqrtX96(address token0, address token1) external returns (uint256 priceSqrtX96) {
@@ -75,16 +85,31 @@ contract UniswapV3OracleChainlink is IUniswapV3Oracle {
 		require(tokens.length == sources.length, "UniswapV3OracleChainlink: INCONSISTENT_PARAMS_LENGTH");
 		for (uint i = 0; i < tokens.length; i++) {
 			require(tokenSources[tokens[i]] == address(0), "UniswapV3OracleChainlink: TOKEN_INITIALIZED");
+			if (verifyTokenSource) {
+				int256 price = AggregatorInterface(sources[i]).latestAnswer();
+				require(price > 100 && price < 2**112, "UniswapV3OracleChainlink: PRICE_OUT_OF_RANGE");
+				int256 totalDecimals = int256(IERC20(tokens[i]).decimals()) + AggregatorInterface(sources[i]).decimals();
+				require(totalDecimals >= 8 && totalDecimals <= 48, "UniswapV3OracleChainlink: DECIMALS_OUT_OF_RANGE");
+				string memory symbol = IERC20(tokens[i]).symbol();
+				string memory description = AggregatorInterface(sources[i]).description();
+				require(description.equals(symbol.append(" / USD")), "UniswapV3OracleChainlink: INCONSISTENT_DESCRIPTION");
+			}
 			tokenSources[tokens[i]] = sources[i];
 			emit TokenSourceCreated(tokens[i], sources[i]);
 		}
 	}
-	
+
 	function _setFallbackOracle(address newFallbackOracle) external {
 		require(msg.sender == admin, "UniswapV3OracleChainlink: UNAUTHORIZED");
 		address oldFallbackOracle = fallbackOracle;
 		fallbackOracle = newFallbackOracle;
 		emit NewFallbackOracle(oldFallbackOracle, newFallbackOracle);
+	}
+	
+	function _setVerifyTokenSource(bool enable) external {
+		require(msg.sender == admin, "UniswapV3OracleChainlink: UNAUTHORIZED");
+		verifyTokenSource = enable;
+		emit SetVerifyTokenSource(enable);
 	}
 	
 	function _setPendingAdmin(address newPendingAdmin) external {

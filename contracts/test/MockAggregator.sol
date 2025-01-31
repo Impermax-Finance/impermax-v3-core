@@ -7,6 +7,7 @@ contract MockAggregator is AggregatorInterface {
 	int256 public latestAnswer;
 	uint256 public latestTimestamp;
 	uint256 public latestRound;
+	string public description;
 	
 	constructor () public {}
 	
@@ -21,5 +22,8 @@ contract MockAggregator is AggregatorInterface {
 	}
 	function setLatestRound(uint256 _latestRound) external {
 		latestRound = _latestRound;
+	}
+	function setDescription(string calldata _description) external {
+		description = _description;
 	}
 }
