@@ -90,7 +90,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 		uint256 mintAmount = balance.sub(totalBalance);
 		
 		newTokenId = positionLength++;
-		_safeMint(to, newTokenId);
+		_mint(to, newTokenId);
 		liquidity[newTokenId] = mintAmount;
 		
 		emit UpdatePositionLiquidity(newTokenId, mintAmount);
@@ -119,7 +119,7 @@ contract TokenizedUniswapV2Position is ITokenizedUniswapV2Position, INFTLP, Impe
 		uint256 oldTokenLiquidity = oldLiquidity - newTokenLiquidity;
 		liquidity[tokenId] = oldTokenLiquidity;
 		newTokenId = positionLength++;
-		_safeMint(owner, newTokenId);
+		_mint(owner, newTokenId);
 		liquidity[newTokenId] = newTokenLiquidity;
 		
 		emit UpdatePositionLiquidity(tokenId, oldTokenLiquidity);

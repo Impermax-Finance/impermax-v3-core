@@ -136,7 +136,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		uint liquidity = balance.sub(totalBalance[fee][tickLower][tickUpper]);
 		
 		newTokenId = positionsLength++;
-		_safeMint(to, newTokenId);		
+		_mint(to, newTokenId);		
 		positions[newTokenId] = Position({
 			fee: fee,
 			tickLower: tickLower,
@@ -196,7 +196,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		positions[tokenId].unclaimedFees0 = oldUnclaimedFees0;
 		positions[tokenId].unclaimedFees1 = oldUnclaimedFees1;
 		newTokenId = positionsLength++;
-		_safeMint(owner, newTokenId);
+		_mint(owner, newTokenId);
 		positions[newTokenId] = Position({
 			fee: oldPosition.fee,
 			tickLower: oldPosition.tickLower,
