@@ -45,7 +45,6 @@ const BInterestRateModel = artifacts.require('BInterestRateModelHarness');
 const ImpermaxCallee = artifacts.require('ImpermaxCallee');
 const ReentrantCallee = artifacts.require('ReentrantCallee');
 const Recipient = artifacts.require('Recipient');
-const MockBorrowTracker = artifacts.require('MockBorrowTracker');
 const Liquidator = artifacts.require('Liquidator');
 
 //MOCK EXTERNAL DEPLOYER
@@ -394,7 +393,6 @@ module.exports = {
 	ImpermaxCallee,
 	ReentrantCallee,
 	Recipient,
-	MockBorrowTracker,
 	Liquidator,
 	
 	makeErc20Token,

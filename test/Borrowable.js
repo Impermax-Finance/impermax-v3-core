@@ -4,7 +4,6 @@ const {
 	ImpermaxCallee,
 	ReentrantCallee,
 	Recipient,
-	MockBorrowTracker,
 	Liquidator,
 	makeFactory,
 	makeTokenizedCLPosition,
@@ -92,7 +91,6 @@ contract('Borrowable', function (accounts) {
 		let underlying;
 		let collateral;
 		let recipient;
-		let borrowTracker;
 		const borrowAmount = oneMantissa.mul(new BN(20));
 		const borrowedAmount = borrowAmount;
 		
@@ -156,7 +154,6 @@ contract('Borrowable', function (accounts) {
 			});
 			
 			const borrowIndex = await borrowable.borrowIndex();
-			expectAlmostEqualMantissa(await borrowTracker.relativeBorrow(TOKEN_ID), borrowBalance.mul(K_TRACKER).div(borrowIndex));
 			
 			return true;
 		}
@@ -168,11 +165,9 @@ contract('Borrowable', function (accounts) {
 			collateral = await Collateral.new();
 			recipient = await Recipient.new();
 			receiver = (await ImpermaxCallee.new(recipient.address, underlying.address)).address;
-			borrowTracker = await MockBorrowTracker.new();
 			await borrowable.setFactoryHarness(factory.address);	
 			await borrowable.setUnderlyingHarness(underlying.address);
 			await borrowable.setCollateralHarness(collateral.address);
-			await borrowable.setBorrowTracker(borrowTracker.address);
 			await borrowable.sync(); //avoid undesired borrowBalance growing 
 			await collateral.setOwnerHarness(borrower, TOKEN_ID);
 		});

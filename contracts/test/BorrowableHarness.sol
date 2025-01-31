@@ -83,10 +83,6 @@ contract BorrowableHarness is ImpermaxV3Borrowable {
 		exchangeRateLast = _exchangeRateLast;
 	}
 	
-	function setBorrowTracker(address _borrowTracker) public {
-		borrowTracker = _borrowTracker;
-	}
-	
 	function seizeCollateral(uint tokenId, uint repayAmount, address liquidator, bytes memory data) public returns (uint seizeTokenId) {
 		repayAmount = repayAmount < borrowBalance(tokenId) ? repayAmount : borrowBalance(tokenId);
 		seizeTokenId = ICollateral(collateral).seize(tokenId, repayAmount, liquidator, data);		

@@ -11,7 +11,6 @@ import "./interfaces/IImpermaxCallee.sol";
 import "./interfaces/IERC20.sol";
 import "./interfaces/IERC721.sol";
 import "./interfaces/IFactory.sol";
-import "./interfaces/IBorrowTracker.sol";
 import "./libraries/Math.sol";
 
 contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInterestRateModel, BAllowance {
@@ -63,12 +62,6 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 		return borrowBalance(tokenId);
 	}
 	
-	function _trackBorrow(uint256 tokenId, uint accountBorrows, uint _borrowIndex) internal {
-		address _borrowTracker = borrowTracker;
-		if (_borrowTracker == address(0)) return;
-		IBorrowTracker(_borrowTracker).trackBorrow(tokenId, accountBorrows, _borrowIndex);
-	}
-	
 	function _updateBorrow(uint256 tokenId, uint borrowAmount, uint repayAmount) private returns (uint accountBorrowsPrior, uint accountBorrows, uint _totalBorrows) {
 		accountBorrowsPrior = borrowBalance(tokenId);
 		if (borrowAmount == repayAmount) return (accountBorrowsPrior, accountBorrowsPrior, totalBorrows);
@@ -98,7 +91,6 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 			_totalBorrows = _totalBorrows > actualDecreaseAmount ? _totalBorrows - actualDecreaseAmount : 0;
 			totalBorrows = safe112(_totalBorrows);			
 		}
-		_trackBorrow(tokenId, accountBorrows, _borrowIndex);
 	}
 	
 	// this low-level function should be called from another contract
@@ -151,10 +143,6 @@ contract ImpermaxV3Borrowable is IBorrowable, PoolToken, BStorage, BSetter, BInt
 		emit RestructureDebt(tokenId, reduceToRatio, repayAmount, accountBorrowsPrior, accountBorrows, _totalBorrows);
 	}
 		
-	function trackBorrow(uint256 tokenId) external accrue {
-		_trackBorrow(tokenId, borrowBalance(tokenId), borrowIndex);
-	}
-	
 	modifier accrue() {
 		accrueInterest();
 		_;

@@ -27,7 +27,6 @@ const KINK_UR_MAX = bnMantissa(0.99);
 const ADJUST_SPEED_MIN = bnMantissa(0.005 / SECONDS_IN_DAY);
 const ADJUST_SPEED_TEST = bnMantissa(0.01 / SECONDS_IN_DAY);
 const ADJUST_SPEED_MAX = bnMantissa(5 / SECONDS_IN_DAY);
-const BORROW_TRACKER_TEST = address(10);
 const DEBT_CEILING_TEST = bnMantissa(15000);
 
 function slightlyIncrease(bn) {
@@ -62,7 +61,6 @@ contract('BSetter', function (accounts) {
 		expectAlmostEqualMantissa(await borrowable.adjustSpeed(), adjustSpeed);
 		expectAlmostEqualMantissa(await borrowable.debtCeiling(), MAX_UINT_256);
 		expectAlmostEqualMantissa(await borrowable.exchangeRate.call(), await borrowable.exchangeRateLast());
-		expect(await borrowable.borrowTracker()).to.eq(address(0));
 	});
 
 	it('permissions check', async () => {
@@ -70,12 +68,10 @@ contract('BSetter', function (accounts) {
 		await borrowable._setReserveFactor(RESERVE_FACTOR_TEST, {from: admin});
 		await borrowable._setKinkUtilizationRate(KINK_UR_TEST, {from: admin});
 		await borrowable._setAdjustSpeed(ADJUST_SPEED_TEST, {from: admin});
-		await borrowable._setBorrowTracker(BORROW_TRACKER_TEST, {from: admin});
 		await borrowable._setDebtCeiling(DEBT_CEILING_TEST, {from: admin});
 		await expectRevert(borrowable._setReserveFactor(RESERVE_FACTOR_TEST, {from: user}), 'ImpermaxV3Borrowable: UNAUTHORIZED');
 		await expectRevert(borrowable._setKinkUtilizationRate(KINK_UR_TEST, {from: user}), 'ImpermaxV3Borrowable: UNAUTHORIZED');
 		await expectRevert(borrowable._setAdjustSpeed(ADJUST_SPEED_TEST, {from: user}), 'ImpermaxV3Borrowable: UNAUTHORIZED');
-		await expectRevert(borrowable._setBorrowTracker(BORROW_TRACKER_TEST, {from: user}), 'ImpermaxV3Borrowable: UNAUTHORIZED');
 		await expectRevert(borrowable._setDebtCeiling(DEBT_CEILING_TEST, {from: user}), 'ImpermaxV3Borrowable: UNAUTHORIZED');
 	});
 
@@ -95,12 +91,6 @@ contract('BSetter', function (accounts) {
 		const receipt = await borrowable._setAdjustSpeed(ADJUST_SPEED_TEST, {from: admin});
 		expectEvent(receipt, 'NewAdjustSpeed', {});
 		expectAlmostEqualMantissa(await borrowable.adjustSpeed(), ADJUST_SPEED_TEST);
-	});
-
-	it('set borrow tracker', async () => {
-		const receipt = await borrowable._setBorrowTracker(BORROW_TRACKER_TEST, {from: admin});
-		expectEvent(receipt, 'NewBorrowTracker', {});
-		expect((await borrowable.borrowTracker()).toLowerCase()).to.eq(BORROW_TRACKER_TEST.toLowerCase());
 	});
 
 	it('set debt ceiling', async () => {
