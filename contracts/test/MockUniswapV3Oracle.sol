@@ -8,7 +8,8 @@ contract MockUniswapV3Oracle is IUniswapV3Oracle {
 	
 	mapping(address => mapping(address => uint256)) public oraclePriceSqrtX96;
 	
-	function setPrice(address token0, address token1, uint256 price) external {
+	function setPrice(address tokenA, address tokenB, uint256 price) external {
+		(address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
 		oraclePriceSqrtX96[token0][token1] = price;
 	}
 }
