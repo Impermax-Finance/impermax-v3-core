@@ -51,6 +51,7 @@ interface ITokenizedUniswapV3Position {
 	
 	function factory() external view returns (address);
 	function uniswapV3Factory() external view returns (address);
+	function oracle() external view returns (address);
 	
 	function totalBalance(uint24 fee, int24 tickLower, int24 tickUpper) external view returns (uint256);
 	
@@ -84,5 +85,6 @@ interface ITokenizedUniswapV3Position {
 	
 	function mint(address to, uint24 fee, int24 tickLower, int24 tickUpper) external  returns (uint256 newTokenId);
 	function redeem(address to, uint256 tokenId) external  returns (uint256 amount0, uint256 amount1);
-
+	
+	function reinvest(uint256 tokenId, address bountyTo) external returns (uint256 bounty0, uint256 bounty1);
 }
