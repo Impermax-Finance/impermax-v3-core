@@ -17,8 +17,6 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 	using TickMath for int24;
 	
     uint constant Q128 = 2**128;
-
-	uint256 public constant FEE_COLLECTED_WEIGHT = 0.95e18; // 95%
 	
 	address public factory;
 	address public uniswapV3Factory;
@@ -115,15 +113,8 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		(realXYs.currentPrice.realX, realXYs.currentPrice.realY) = LiquidityAmounts.getAmountsForLiquidity(currentPrice, pa, pb, position.liquidity);
 		(realXYs.highestPrice.realX, realXYs.highestPrice.realY) = LiquidityAmounts.getAmountsForLiquidity(highestPrice, pa, pb, position.liquidity);
 		
-		uint256 feeCollectedWeightedX = feeCollectedX.mul(FEE_COLLECTED_WEIGHT).div(1e18);
-		uint256 feeCollectedWeightedY = feeCollectedY.mul(FEE_COLLECTED_WEIGHT).div(1e18);
-		
-		realXYs.lowestPrice.realX += feeCollectedWeightedX;
-		realXYs.lowestPrice.realY += feeCollectedWeightedY; 
 		realXYs.currentPrice.realX += feeCollectedX;
 		realXYs.currentPrice.realY += feeCollectedY;
-		realXYs.highestPrice.realX += feeCollectedWeightedX;
-		realXYs.highestPrice.realY += feeCollectedWeightedY;
 	}
  
 	/*** Interactions ***/

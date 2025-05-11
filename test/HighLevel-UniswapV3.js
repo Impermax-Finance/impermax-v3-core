@@ -28,7 +28,7 @@ const MAX_UINT_256 = (new BN(2)).pow(new BN(256)).sub(new BN(1));
 
 const FEE = 3000;
 const ORACLE_T = 1800;
-const FEE_COLLECTED_WEIGHT = 0.95;
+const FEE_COLLECTED_WEIGHT = 0;
 
 function X96(n) {
 	return _2_96.mul(bnMantissa(n)).div(oneMantissa);
