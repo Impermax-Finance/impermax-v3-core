@@ -239,6 +239,40 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		emit UpdatePositionLiquidity(tokenToJoin, 0);
 	}
 	
+	/*** Claim Fees ***/
+
+	function _checkAuthorizedCollateral(uint256 tokenId) internal view {
+		// check that the sender is authorized to spend the tokenId of the collateral contract that owns this nft
+		address collateral = _requireOwned(tokenId);
+		address owner = IERC721(collateral).ownerOf(tokenId);
+		if (owner == msg.sender) return;
+		if (IERC721(collateral).getApproved(tokenId) == msg.sender) return;
+		if (IERC721(collateral).isApprovedForAll(owner, msg.sender)) return;
+		revert("TokenizedUniswapV3Position: UNAUTHORIZED");
+	}
+	function claim(uint256 tokenId, address to) external nonReentrant {
+		_checkAuthorizedCollateral(tokenId);
+		
+		Position memory position = positions[tokenId];
+		
+		address pool = getPool(position.fee);
+		IUniswapV3Pool(pool).burn(position.tickLower, position.tickUpper, 0);
+		(
+			uint256 newFeeGrowthInside0LastX128,
+			uint256 newFeeGrowthInside1LastX128,
+			uint256 feeCollected0,
+			uint256 feeCollected1
+		) = _getfeeCollectedAndGrowth(position, pool);
+		require(feeCollected0 > 0 || feeCollected1 > 0, "TokenizedUniswapV3Position: NO_FEES_COLLECTED");
+		
+		IUniswapV3Pool(pool).collect(to, position.tickLower, position.tickUpper, safe128(feeCollected0), safe128(feeCollected1));
+		
+		positions[tokenId].feeGrowthInside0LastX128 = newFeeGrowthInside0LastX128;
+		positions[tokenId].feeGrowthInside1LastX128 = newFeeGrowthInside1LastX128;
+		
+		emit UpdatePositionFeeGrowthInside(tokenId, newFeeGrowthInside0LastX128, newFeeGrowthInside1LastX128);
+	}
+	
 	/*** Utilities ***/
 
     function safe128(uint n) internal pure returns (uint128) {
