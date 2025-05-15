@@ -118,7 +118,6 @@ async function makeTokenizedUniswapV3Factory(opts = {}) {
 	const deployer = await TokenizedUniswapV3Deployer.new();
 	const oracle = await MockUniswapV3Oracle.new();
 	const tokenizedUniswapV3Factory = await TokenizedUniswapV3Factory.new(
-		opts.admin || address(0),
 		uniswapV3Factory.address,
 		deployer.address,
 		oracle.address,

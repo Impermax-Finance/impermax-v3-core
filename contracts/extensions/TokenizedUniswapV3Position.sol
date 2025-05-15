@@ -5,7 +5,6 @@ import "../ImpermaxERC721.sol";
 import "../interfaces/INFTLP.sol";
 import "./interfaces/IUniswapV3Factory.sol";
 import "./interfaces/IUniswapV3Pool.sol";
-import "./interfaces/IUniswapV3AC.sol";
 import "./interfaces/IV3Oracle.sol";
 import "./interfaces/ITokenizedUniswapV3Position.sol";
 import "./interfaces/ITokenizedUniswapV3Factory.sol";
@@ -80,8 +79,8 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		uint256 delta0 = fg0 - position.feeGrowthInside0LastX128;
 		uint256 delta1 = fg1 - position.feeGrowthInside1LastX128;
 		
-		feeCollected0 = delta0.mul(position.liquidity).div(Q128).add(position.unclaimedFees0);
-		feeCollected1 = delta1.mul(position.liquidity).div(Q128).add(position.unclaimedFees1);
+		feeCollected0 = delta0.mul(position.liquidity).div(Q128);
+		feeCollected1 = delta1.mul(position.liquidity).div(Q128);
 	}
 	function _getFeeCollected(Position memory position, address pool) internal view returns (uint256 feeCollected0, uint256 feeCollected1) {
 		(,,feeCollected0, feeCollected1) = _getfeeCollectedAndGrowth(position, pool);
@@ -134,9 +133,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 			tickUpper: tickUpper,
 			liquidity: safe128(liquidity),
 			feeGrowthInside0LastX128: fg0,
-			feeGrowthInside1LastX128: fg1,
-			unclaimedFees0: 0,
-			unclaimedFees1: 0
+			feeGrowthInside1LastX128: fg1
 		});
 		
 		_updateBalance(fee, tickLower, tickUpper);
@@ -144,7 +141,6 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		emit MintPosition(newTokenId, fee, tickLower, tickUpper);
 		emit UpdatePositionLiquidity(newTokenId, liquidity);
 		emit UpdatePositionFeeGrowthInside(newTokenId, fg0, fg1);
-		emit UpdatePositionUnclaimedFees(newTokenId, 0, 0);
 	}
 
 	// this low-level function should be called from another contract
@@ -166,7 +162,6 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		(amount0, amount1) = IUniswapV3Pool(pool).collect(to, position.tickLower, position.tickUpper, safe128(amount0), safe128(amount1));
 		
 		emit UpdatePositionLiquidity(tokenId, 0);
-		emit UpdatePositionUnclaimedFees(tokenId, 0, 0);
 	}
 	
 	function _splitUint(uint256 n, uint256 percentage) internal pure returns (uint256 a, uint256 b) {
@@ -181,11 +176,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		
 		Position memory oldPosition = positions[tokenId];
 		(uint256 newLiquidity, uint256 oldLiquidity) = _splitUint(oldPosition.liquidity, percentage);
-		(uint256 newUnclaimedFees0, uint256 oldUnclaimedFees0) = _splitUint(oldPosition.unclaimedFees0, percentage);
-		(uint256 newUnclaimedFees1, uint256 oldUnclaimedFees1) = _splitUint(oldPosition.unclaimedFees1, percentage);
 		positions[tokenId].liquidity = safe128(oldLiquidity);
-		positions[tokenId].unclaimedFees0 = oldUnclaimedFees0;
-		positions[tokenId].unclaimedFees1 = oldUnclaimedFees1;
 		newTokenId = positionsLength++;
 		_mint(owner, newTokenId);
 		positions[newTokenId] = Position({
@@ -194,16 +185,12 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 			tickUpper: oldPosition.tickUpper,
 			liquidity: safe128(newLiquidity),
 			feeGrowthInside0LastX128: oldPosition.feeGrowthInside0LastX128,
-			feeGrowthInside1LastX128: oldPosition.feeGrowthInside1LastX128,
-			unclaimedFees0: newUnclaimedFees0,
-			unclaimedFees1: newUnclaimedFees1
+			feeGrowthInside1LastX128: oldPosition.feeGrowthInside1LastX128
 		});
 		
 		emit UpdatePositionLiquidity(tokenId, oldLiquidity);
-		emit UpdatePositionUnclaimedFees(tokenId, oldUnclaimedFees0, oldUnclaimedFees1);
 		emit MintPosition(newTokenId, oldPosition.fee, oldPosition.tickLower, oldPosition.tickUpper);
 		emit UpdatePositionLiquidity(newTokenId, newLiquidity);
-		emit UpdatePositionUnclaimedFees(newTokenId, newUnclaimedFees0, newUnclaimedFees1);
 		emit UpdatePositionFeeGrowthInside(newTokenId, oldPosition.feeGrowthInside0LastX128, oldPosition.feeGrowthInside1LastX128);
 	}
 	
@@ -222,85 +209,34 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		
 		// update feeGrowthInside and feeCollected based on the latest snapshot
 		// it's not necessary to call burn() in order to update the feeGrowthInside of the position
-		uint256 newUnclaimedFees0; uint256 newUnclaimedFees1;
+		uint256 newFeeGrowthInside0LastX128; uint256 newFeeGrowthInside1LastX128;
+		{
 		address pool = getPool(positionA.fee);
 		(
-			uint256 newFeeGrowthInside0LastX128, 
-			uint256 newFeeGrowthInside1LastX128, 
+			uint256 currentFeeGrowthInside0LastX128, 
+			uint256 currentFeeGrowthInside1LastX128, 
 			uint256 feeCollectedA0, 
 			uint256 feeCollectedA1
 		) = _getfeeCollectedAndGrowth(positionA, pool);
-		{
 		(
 			uint256 feeCollectedB0, 
 			uint256 feeCollectedB1
 		) = _getFeeCollected(positionB, pool);
-		newUnclaimedFees0 = feeCollectedA0.add(feeCollectedB0);
-		newUnclaimedFees1 = feeCollectedA1.add(feeCollectedB1);
+		uint256 unclaimedFees0 = feeCollectedA0.add(feeCollectedB0);
+		uint256 unclaimedFees1 = feeCollectedA1.add(feeCollectedB1);
+		newFeeGrowthInside0LastX128 = currentFeeGrowthInside0LastX128 - unclaimedFees0.mul(Q128).div(newLiquidity);
+		newFeeGrowthInside1LastX128 = currentFeeGrowthInside1LastX128 - unclaimedFees1.mul(Q128).div(newLiquidity);
 		}
 		
 		positions[tokenId].liquidity = safe128(newLiquidity);
 		positions[tokenId].feeGrowthInside0LastX128 = newFeeGrowthInside0LastX128;
 		positions[tokenId].feeGrowthInside1LastX128 = newFeeGrowthInside1LastX128;
-		positions[tokenId].unclaimedFees0 = newUnclaimedFees0;
-		positions[tokenId].unclaimedFees1 = newUnclaimedFees1;
 		delete positions[tokenToJoin];
 		_burn(tokenToJoin);
 		
 		emit UpdatePositionLiquidity(tokenId, newLiquidity);
 		emit UpdatePositionFeeGrowthInside(tokenId, newFeeGrowthInside0LastX128, newFeeGrowthInside1LastX128);
-		emit UpdatePositionUnclaimedFees(tokenId, newUnclaimedFees0, newUnclaimedFees1);
 		emit UpdatePositionLiquidity(tokenToJoin, 0);
-		emit UpdatePositionUnclaimedFees(tokenToJoin, 0, 0);
-	}
-	
-	/*** Autocompounding Module ***/
-	
-	function reinvest(uint256 tokenId, address bountyTo) external nonReentrant returns (uint256 bounty0, uint256 bounty1) {
-		// 1. Initialize and read fee collected
-		address acModule = ITokenizedUniswapV3Factory(factory).acModule();
-		Position memory position = positions[tokenId];
-		Position memory newPosition = positions[tokenId];
-		uint256 feeCollected0; uint256 feeCollected1;
-		address pool = getPool(position.fee);
-		IUniswapV3Pool(pool).burn(position.tickLower, position.tickUpper, 0);
-		(
-			newPosition.feeGrowthInside0LastX128,
-			newPosition.feeGrowthInside1LastX128,
-			feeCollected0,
-			feeCollected1
-		) = _getfeeCollectedAndGrowth(position, pool);
-		require(feeCollected0 > 0 || feeCollected1 > 0, "TokenizedUniswapV3Position: NO_FEES_COLLECTED");
-	
-		// 2. Calculate how much to collect and send it to autocompounder (and update unclaimedFees)
-		(uint256 collect0, uint256 collect1, bytes memory data) = IUniswapV3AC(acModule).getToCollect(
-			position, 
-			tokenId, 
-			feeCollected0, 
-			feeCollected1
-		);
-		newPosition.unclaimedFees0 = feeCollected0.sub(collect0, "TokenizedUniswapV3Position: COLLECT_0_TOO_HIGH");
-		newPosition.unclaimedFees1 = feeCollected1.sub(collect1, "TokenizedUniswapV3Position: COLLECT_1_TOO_HIGH");
-		
-		IUniswapV3Pool(pool).collect(acModule, position.tickLower, position.tickUpper, safe128(collect0), safe128(collect1));
-		
-		
-		// 3. Let the autocompounder convert the fees to liquidity
-		{
-		uint256 totalBalanceBefore = totalBalance[position.fee][position.tickLower][position.tickUpper];
-		(bounty0, bounty1) = IUniswapV3AC(acModule).mintLiquidity(bountyTo, data);		
-		_updateBalance(position.fee, position.tickLower, position.tickUpper);
-		uint256 newLiquidity = totalBalance[position.fee][position.tickLower][position.tickUpper].sub(totalBalanceBefore);
-		require(newLiquidity > 0, "TokenizedUniswapV3Position: NO_LIQUIDITY_ADDED");
-		newPosition.liquidity = safe128(newLiquidity.add(position.liquidity));
-		}
-		
-		// 4. Update the position
-		positions[tokenId] = newPosition;
-		
-		emit UpdatePositionLiquidity(tokenId, newPosition.liquidity);
-		emit UpdatePositionFeeGrowthInside(tokenId, newPosition.feeGrowthInside0LastX128, newPosition.feeGrowthInside1LastX128);
-		emit UpdatePositionUnclaimedFees(tokenId, newPosition.unclaimedFees0, newPosition.unclaimedFees1);
 	}
 	
 	/*** Utilities ***/
