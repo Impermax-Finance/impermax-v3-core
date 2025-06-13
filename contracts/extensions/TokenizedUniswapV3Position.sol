@@ -79,8 +79,8 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		uint256 delta0 = fg0 - position.feeGrowthInside0LastX128;
 		uint256 delta1 = fg1 - position.feeGrowthInside1LastX128;
 		
-		feeCollected0 = delta0.mul(position.liquidity).div(Q128);
-		feeCollected1 = delta1.mul(position.liquidity).div(Q128);
+		feeCollected0 = delta0.mul(position.liquidity).div(Q128).add(position.unclaimedFees0);
+		feeCollected1 = delta1.mul(position.liquidity).div(Q128).add(position.unclaimedFees1);
 	}
 	function _getFeeCollected(Position memory position, address pool) internal view returns (uint256 feeCollected0, uint256 feeCollected1) {
 		(,,feeCollected0, feeCollected1) = _getfeeCollectedAndGrowth(position, pool);
@@ -91,11 +91,6 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		INFTLP.RealXYs memory realXYs
 	) {
 		Position memory position = positions[tokenId];
-		
-		// trigger update of fee growth
-		address pool = getPool(position.fee);
-		IUniswapV3Pool(pool).burn(position.tickLower, position.tickUpper, 0);
-		(uint256 feeCollectedX, uint256 feeCollectedY) = _getFeeCollected(position, pool);
 	
 		require(safetyMarginSqrt >= 1e18, "TokenizedUniswapV3Position: INVALID_SAFETY_MARGIN");
 		_requireOwned(tokenId);
