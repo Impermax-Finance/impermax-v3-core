@@ -45,6 +45,8 @@ interface ITokenizedUniswapV3Position {
 		uint128 liquidity;
 		uint256 feeGrowthInside0LastX128;
 		uint256 feeGrowthInside1LastX128;
+		uint256 unclaimedFees0;
+		uint256 unclaimedFees1;
 	}
 	
 	function factory() external view returns (address);
@@ -59,7 +61,9 @@ interface ITokenizedUniswapV3Position {
 		int24 tickUpper,
 		uint128 liquidity,
 		uint256 feeGrowthInside0LastX128,
-		uint256 feeGrowthInside1LastX128
+		uint256 feeGrowthInside1LastX128,
+		uint256 unclaimedFees0,
+		uint256 unclaimedFees1
 	);
 	function positionsLength() external view returns (uint256);
 	
@@ -70,6 +74,7 @@ interface ITokenizedUniswapV3Position {
 	event MintPosition(uint256 indexed tokenId, uint24 fee, int24 tickLower, int24 tickUpper);
 	event UpdatePositionLiquidity(uint256 indexed tokenId, uint256 liquidity);
 	event UpdatePositionFeeGrowthInside(uint256 indexed tokenId, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128);
+	event UpdatePositionUnclaimedFees(uint256 indexed tokenId, uint256 unclaimedFees0, uint256 unclaimedFees1);
 
 	function _initialize (
 		address _uniswapV3Factory, 

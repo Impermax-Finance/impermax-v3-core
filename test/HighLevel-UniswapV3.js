@@ -242,8 +242,8 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		expectAlmostEqualMantissa(amount1, bnMantissa(realY));
 		expectAlmostEqualMantissa(positionNFTLP.liquidity, bnMantissa(currentLiquidity));
 		expectAlmostEqualMantissa(positionUnderlying.liquidity, bnMantissa(currentLiquidity));
-		expectAlmostEqualMantissa(await token0.balanceOf(user), bnMantissa(amount0 / 1e18 + totalGained0B));
-		expectAlmostEqualMantissa(await token1.balanceOf(user), bnMantissa(amount1 / 1e18 + totalGained1B));
+		expectAlmostEqualMantissa(await token0.balanceOf(user), bnMantissa(amount0 / 1e18));
+		expectAlmostEqualMantissa(await token1.balanceOf(user), bnMantissa(amount1 / 1e18));
 	});
 	
 	it(`mint 2nd user`, async () => {
@@ -269,8 +269,6 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		const [realX, realY] = getRealXAndY({price, priceA, priceB, liquidity: currentLiquidity});
 		//console.log("currentPrice.realX", positionObject.realXYs.currentPrice.realX / 1e18);
 		//console.log("currentPrice.realY", positionObject.realXYs.currentPrice.realY / 1e18);
-		const feeCollected0 = totalGained0C - totalGained0B * removePercentage;
-		const feeCollected1 = totalGained1C - totalGained1B * removePercentage;
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.currentPrice.realX, 
 			bnMantissa(realX)
@@ -321,8 +319,8 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		//console.log("expected total X", realX + totalGained0B * removePercentage);
 		//console.log("expected total Y", realY + totalGained1B * removePercentage);
 		
-		expectAlmostEqualMantissa(amount0, bnMantissa(realX + totalGained0C - totalGained0B));
-		expectAlmostEqualMantissa(amount1, bnMantissa(realY + totalGained1C - totalGained1B));
+		expectAlmostEqualMantissa(amount0, bnMantissa(realX + totalGained0C));
+		expectAlmostEqualMantissa(amount1, bnMantissa(realY + totalGained1C));
 		expect(positionNFTLP.liquidity * 1).to.eq(0);
 		expectAlmostEqualMantissa(positionUnderlying.liquidity, bnMantissa(liquidityUserB));
 		expectAlmostEqualMantissa((await token0.balanceOf(user)).sub(balanceBefore0), amount0);

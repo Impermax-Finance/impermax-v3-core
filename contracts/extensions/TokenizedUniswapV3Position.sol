@@ -130,7 +130,9 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 			tickUpper: tickUpper,
 			liquidity: safe128(liquidity),
 			feeGrowthInside0LastX128: fg0,
-			feeGrowthInside1LastX128: fg1
+			feeGrowthInside1LastX128: fg1,
+			unclaimedFees0: 0,
+			unclaimedFees1: 0
 		});
 		
 		_updateBalance(fee, tickLower, tickUpper);
@@ -138,6 +140,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		emit MintPosition(newTokenId, fee, tickLower, tickUpper);
 		emit UpdatePositionLiquidity(newTokenId, liquidity);
 		emit UpdatePositionFeeGrowthInside(newTokenId, fg0, fg1);
+		emit UpdatePositionUnclaimedFees(newTokenId, 0, 0);
 	}
 
 	// this low-level function should be called from another contract
@@ -159,6 +162,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		(amount0, amount1) = IUniswapV3Pool(pool).collect(to, position.tickLower, position.tickUpper, safe128(amount0), safe128(amount1));
 		
 		emit UpdatePositionLiquidity(tokenId, 0);
+		emit UpdatePositionUnclaimedFees(tokenId, 0, 0);
 	}
 	
 	function _splitUint(uint256 n, uint256 percentage) internal pure returns (uint256 a, uint256 b) {
@@ -171,8 +175,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		_checkAuthorized(owner, msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
 		
-		address claimTo = IERC721(owner).ownerOf(tokenId);
-		_claim(claimTo, tokenId);
+		_updatePositionUnclaimedFees(tokenId);
 		
 		Position memory oldPosition = positions[tokenId];
 		(uint256 newLiquidity, uint256 oldLiquidity) = _splitUint(oldPosition.liquidity, percentage);
@@ -185,13 +188,16 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 			tickUpper: oldPosition.tickUpper,
 			liquidity: safe128(newLiquidity),
 			feeGrowthInside0LastX128: oldPosition.feeGrowthInside0LastX128,
-			feeGrowthInside1LastX128: oldPosition.feeGrowthInside1LastX128
+			feeGrowthInside1LastX128: oldPosition.feeGrowthInside1LastX128,
+			unclaimedFees0: 0,
+			unclaimedFees1: 0
 		});
 		
 		emit UpdatePositionLiquidity(tokenId, oldLiquidity);
 		emit MintPosition(newTokenId, oldPosition.fee, oldPosition.tickLower, oldPosition.tickUpper);
 		emit UpdatePositionLiquidity(newTokenId, newLiquidity);
 		emit UpdatePositionFeeGrowthInside(newTokenId, oldPosition.feeGrowthInside0LastX128, oldPosition.feeGrowthInside1LastX128);
+		emit UpdatePositionUnclaimedFees(newTokenId, 0, 0);
 	}
 	
 	function join(uint256 tokenId, uint256 tokenToJoin) external nonReentrant {
@@ -209,34 +215,36 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		
 		// update feeGrowthInside and feeCollected based on the latest snapshot
 		// it's not necessary to call burn() in order to update the feeGrowthInside of the position
-		uint256 newFeeGrowthInside0LastX128; uint256 newFeeGrowthInside1LastX128;
-		{
+		uint256 newUnclaimedFees0; uint256 newUnclaimedFees1;
 		address pool = getPool(positionA.fee);
 		(
-			uint256 currentFeeGrowthInside0LastX128, 
-			uint256 currentFeeGrowthInside1LastX128, 
+			uint256 newFeeGrowthInside0LastX128, 
+			uint256 newFeeGrowthInside1LastX128, 
 			uint256 feeCollectedA0, 
 			uint256 feeCollectedA1
 		) = _getfeeCollectedAndGrowth(positionA, pool);
+		{
 		(
 			uint256 feeCollectedB0, 
 			uint256 feeCollectedB1
 		) = _getFeeCollected(positionB, pool);
-		uint256 unclaimedFees0 = feeCollectedA0.add(feeCollectedB0);
-		uint256 unclaimedFees1 = feeCollectedA1.add(feeCollectedB1);
-		newFeeGrowthInside0LastX128 = currentFeeGrowthInside0LastX128 - unclaimedFees0.mul(Q128).div(newLiquidity);
-		newFeeGrowthInside1LastX128 = currentFeeGrowthInside1LastX128 - unclaimedFees1.mul(Q128).div(newLiquidity);
+		newUnclaimedFees0 = feeCollectedA0.add(feeCollectedB0);
+		newUnclaimedFees1 = feeCollectedA1.add(feeCollectedB1);
 		}
 		
 		positions[tokenId].liquidity = safe128(newLiquidity);
 		positions[tokenId].feeGrowthInside0LastX128 = newFeeGrowthInside0LastX128;
 		positions[tokenId].feeGrowthInside1LastX128 = newFeeGrowthInside1LastX128;
+		positions[tokenId].unclaimedFees0 = newUnclaimedFees0;
+		positions[tokenId].unclaimedFees1 = newUnclaimedFees1;
 		delete positions[tokenToJoin];
 		_burn(tokenToJoin);
 		
 		emit UpdatePositionLiquidity(tokenId, newLiquidity);
 		emit UpdatePositionFeeGrowthInside(tokenId, newFeeGrowthInside0LastX128, newFeeGrowthInside1LastX128);
+		emit UpdatePositionUnclaimedFees(tokenId, newUnclaimedFees0, newUnclaimedFees1);
 		emit UpdatePositionLiquidity(tokenToJoin, 0);
+		emit UpdatePositionUnclaimedFees(tokenToJoin, 0, 0);
 	}
 	
 	/*** Claim Fees ***/
@@ -250,25 +258,42 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		if (IERC721(collateral).isApprovedForAll(owner, msg.sender)) return;
 		revert("TokenizedUniswapV3Position: UNAUTHORIZED");
 	}
-	function _claim(address to, uint256 tokenId) internal returns (uint256, uint256) {		
+	function _updatePositionUnclaimedFees(uint256 tokenId) internal {
 		Position memory position = positions[tokenId];
 		
 		address pool = getPool(position.fee);
 		IUniswapV3Pool(pool).burn(position.tickLower, position.tickUpper, 0);
+		
 		(
-			uint256 newFeeGrowthInside0LastX128,
-			uint256 newFeeGrowthInside1LastX128,
-			uint256 feeCollected0,
-			uint256 feeCollected1
+			uint256 feeGrowthInside0LastX128,
+			uint256 feeGrowthInside1LastX128,
+			uint256 unclaimedFees0,
+			uint256 unclaimedFees1
 		) = _getfeeCollectedAndGrowth(position, pool);
+		
+		positions[tokenId].feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
+		positions[tokenId].feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
+		positions[tokenId].unclaimedFees0 = unclaimedFees0;
+		positions[tokenId].unclaimedFees1 = unclaimedFees1;
+		
+		emit UpdatePositionFeeGrowthInside(tokenId, feeGrowthInside0LastX128, feeGrowthInside1LastX128);
+		emit UpdatePositionUnclaimedFees(tokenId, unclaimedFees0, unclaimedFees1);
+	}
+	function _claim(address to, uint256 tokenId) internal returns (uint256, uint256) {
+		_updatePositionUnclaimedFees(tokenId);
+		Position memory position = positions[tokenId];
+		
+		uint256 feeCollected0 = position.unclaimedFees0;
+		uint256 feeCollected1 = position.unclaimedFees1;
 		if (feeCollected0 == 0 && feeCollected1 == 0) return (0, 0);
 		
+		address pool = getPool(position.fee);
 		IUniswapV3Pool(pool).collect(to, position.tickLower, position.tickUpper, safe128(feeCollected0), safe128(feeCollected1));
 		
-		positions[tokenId].feeGrowthInside0LastX128 = newFeeGrowthInside0LastX128;
-		positions[tokenId].feeGrowthInside1LastX128 = newFeeGrowthInside1LastX128;
+		positions[tokenId].unclaimedFees0 = 0;
+		positions[tokenId].unclaimedFees1 = 0;
 		
-		emit UpdatePositionFeeGrowthInside(tokenId, newFeeGrowthInside0LastX128, newFeeGrowthInside1LastX128);
+		emit UpdatePositionUnclaimedFees(tokenId, 0, 0);
 		
 		return (feeCollected0, feeCollected1);
 	}
