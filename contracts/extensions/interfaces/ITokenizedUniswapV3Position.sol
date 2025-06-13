@@ -78,6 +78,7 @@ interface ITokenizedUniswapV3Position {
 		address _token1
 	) external;
 	
-	function mint(address to, uint24 fee, int24 tickLower, int24 tickUpper) external  returns (uint256 newTokenId);
-	function redeem(address to, uint256 tokenId) external  returns (uint256 amount0, uint256 amount1);
+	function mint(address to, uint24 fee, int24 tickLower, int24 tickUpper) external returns (uint256 newTokenId);
+	function redeem(address to, uint256 tokenId) external returns (uint256 amount0, uint256 amount1);
+	function claim(address to, uint256 tokenId) external returns (uint256 feeCollected0, uint256 feeCollected1);
 }

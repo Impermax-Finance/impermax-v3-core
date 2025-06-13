@@ -168,12 +168,12 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		const [realX, realY] = getRealXAndY({price, priceA, priceB, liquidity: currentLiquidity});
 		//console.log("currentPrice.realX", positionObject.realXYs.currentPrice.realX / 1e18);
 		//console.log("currentPrice.realY", positionObject.realXYs.currentPrice.realY / 1e18);
-		expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realX, bnMantissa(realX + totalGained0A));
-		expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realY, bnMantissa(realY + totalGained1A));
-		expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realX, bnMantissa(initialLowestRealX + totalGained0A * FEE_COLLECTED_WEIGHT));
-		expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realY, bnMantissa(initialLowestRealY + totalGained1A * FEE_COLLECTED_WEIGHT));
-		expectAlmostEqualMantissa(positionObject.realXYs.highestPrice.realX, bnMantissa(initialHighestRealX + totalGained0A * FEE_COLLECTED_WEIGHT));
-		expectAlmostEqualMantissa(positionObject.realXYs.highestPrice.realY, bnMantissa(initialHighestRealY + totalGained1A * FEE_COLLECTED_WEIGHT));
+		expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realX, bnMantissa(realX));
+		expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realY, bnMantissa(realY));
+		expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realX, bnMantissa(initialLowestRealX));
+		expectAlmostEqualMantissa(positionObject.realXYs.lowestPrice.realY, bnMantissa(initialLowestRealY));
+		expectAlmostEqualMantissa(positionObject.realXYs.highestPrice.realX, bnMantissa(initialHighestRealX));
+		expectAlmostEqualMantissa(positionObject.realXYs.highestPrice.realY, bnMantissa(initialHighestRealY));
 	});
 	
 	it(`mint and join`, async () => {
@@ -196,23 +196,23 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		const [realX, realY] = getRealXAndY({price, priceA, priceB, liquidity: currentLiquidity});
 		//console.log("currentPrice.realX", positionObject.realXYs.currentPrice.realX / 1e18);
 		//console.log("currentPrice.realY", positionObject.realXYs.currentPrice.realY / 1e18);
-		expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realX, bnMantissa(realX + totalGained0B));
-		expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realY, bnMantissa(realY + totalGained1B));
+		expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realX, bnMantissa(realX));
+		expectAlmostEqualMantissa(positionObject.realXYs.currentPrice.realY, bnMantissa(realY));
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.lowestPrice.realX, 
-			bnMantissa(initialLowestRealX * currentLiquidity / initialLiquidity + totalGained0B * FEE_COLLECTED_WEIGHT)
+			bnMantissa(initialLowestRealX * currentLiquidity / initialLiquidity)
 		);
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.lowestPrice.realY, 
-			bnMantissa(initialLowestRealY * currentLiquidity / initialLiquidity + totalGained1B * FEE_COLLECTED_WEIGHT)
+			bnMantissa(initialLowestRealY * currentLiquidity / initialLiquidity)
 		);
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.highestPrice.realX, 
-			bnMantissa(initialHighestRealX * currentLiquidity / initialLiquidity + totalGained0B * FEE_COLLECTED_WEIGHT)
+			bnMantissa(initialHighestRealX * currentLiquidity / initialLiquidity)
 		);
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.highestPrice.realY, 
-			bnMantissa(initialHighestRealY * currentLiquidity / initialLiquidity + totalGained1B * FEE_COLLECTED_WEIGHT)
+			bnMantissa(initialHighestRealY * currentLiquidity / initialLiquidity)
 		);
 	});
 	
@@ -238,12 +238,12 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		//console.log("actual total X", amount0 / 1e18);
 		//console.log("actual total Y", amount1 / 1e18);
 		
-		expectAlmostEqualMantissa(amount0, bnMantissa(realX + totalGained0B * removePercentage));
-		expectAlmostEqualMantissa(amount1, bnMantissa(realY + totalGained1B * removePercentage));
+		expectAlmostEqualMantissa(amount0, bnMantissa(realX));
+		expectAlmostEqualMantissa(amount1, bnMantissa(realY));
 		expectAlmostEqualMantissa(positionNFTLP.liquidity, bnMantissa(currentLiquidity));
 		expectAlmostEqualMantissa(positionUnderlying.liquidity, bnMantissa(currentLiquidity));
-		expectAlmostEqualMantissa(await token0.balanceOf(user), amount0);
-		expectAlmostEqualMantissa(await token1.balanceOf(user), amount1);
+		expectAlmostEqualMantissa(await token0.balanceOf(user), bnMantissa(amount0 / 1e18 + totalGained0B));
+		expectAlmostEqualMantissa(await token1.balanceOf(user), bnMantissa(amount1 / 1e18 + totalGained1B));
 	});
 	
 	it(`mint 2nd user`, async () => {
@@ -273,27 +273,27 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		const feeCollected1 = totalGained1C - totalGained1B * removePercentage;
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.currentPrice.realX, 
-			bnMantissa(realX + feeCollected0)
+			bnMantissa(realX)
 		);
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.currentPrice.realY, 
-			bnMantissa(realY + feeCollected1)
+			bnMantissa(realY)
 		);
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.lowestPrice.realX, 
-			bnMantissa(initialLowestRealX * currentLiquidity / initialLiquidity + feeCollected0 * FEE_COLLECTED_WEIGHT)
+			bnMantissa(initialLowestRealX * currentLiquidity / initialLiquidity)
 		);
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.lowestPrice.realY, 
-			bnMantissa(initialLowestRealY * currentLiquidity / initialLiquidity + feeCollected1 * FEE_COLLECTED_WEIGHT)
+			bnMantissa(initialLowestRealY * currentLiquidity / initialLiquidity)
 		);
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.highestPrice.realX, 
-			bnMantissa(initialHighestRealX * currentLiquidity / initialLiquidity + feeCollected0 * FEE_COLLECTED_WEIGHT)
+			bnMantissa(initialHighestRealX * currentLiquidity / initialLiquidity)
 		);
 		expectAlmostEqualMantissa(
 			positionObject.realXYs.highestPrice.realY, 
-			bnMantissa(initialHighestRealY * currentLiquidity / initialLiquidity + feeCollected1 * FEE_COLLECTED_WEIGHT)
+			bnMantissa(initialHighestRealY * currentLiquidity / initialLiquidity)
 		);
 	});
 	
@@ -321,8 +321,8 @@ contract('Highlevel-UniswapV3', function (accounts) {
 		//console.log("expected total X", realX + totalGained0B * removePercentage);
 		//console.log("expected total Y", realY + totalGained1B * removePercentage);
 		
-		expectAlmostEqualMantissa(amount0, bnMantissa(realX + totalGained0C - totalGained0B * removePercentage));
-		expectAlmostEqualMantissa(amount1, bnMantissa(realY + totalGained1C - totalGained1B * removePercentage));
+		expectAlmostEqualMantissa(amount0, bnMantissa(realX + totalGained0C - totalGained0B));
+		expectAlmostEqualMantissa(amount1, bnMantissa(realY + totalGained1C - totalGained1B));
 		expect(positionNFTLP.liquidity * 1).to.eq(0);
 		expectAlmostEqualMantissa(positionUnderlying.liquidity, bnMantissa(liquidityUserB));
 		expectAlmostEqualMantissa((await token0.balanceOf(user)).sub(balanceBefore0), amount0);

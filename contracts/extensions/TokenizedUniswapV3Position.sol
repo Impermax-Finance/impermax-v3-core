@@ -111,9 +111,6 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		(realXYs.lowestPrice.realX, realXYs.lowestPrice.realY) = LiquidityAmounts.getAmountsForLiquidity(lowestPrice, pa, pb, position.liquidity);
 		(realXYs.currentPrice.realX, realXYs.currentPrice.realY) = LiquidityAmounts.getAmountsForLiquidity(currentPrice, pa, pb, position.liquidity);
 		(realXYs.highestPrice.realX, realXYs.highestPrice.realY) = LiquidityAmounts.getAmountsForLiquidity(highestPrice, pa, pb, position.liquidity);
-		
-		realXYs.currentPrice.realX += feeCollectedX;
-		realXYs.currentPrice.realY += feeCollectedY;
 	}
  
 	/*** Interactions ***/
@@ -173,6 +170,9 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		address owner = _requireOwned(tokenId);
 		_checkAuthorized(owner, msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
+		
+		address claimTo = IERC721(owner).ownerOf(tokenId);
+		_claim(claimTo, tokenId);
 		
 		Position memory oldPosition = positions[tokenId];
 		(uint256 newLiquidity, uint256 oldLiquidity) = _splitUint(oldPosition.liquidity, percentage);
@@ -250,9 +250,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		if (IERC721(collateral).isApprovedForAll(owner, msg.sender)) return;
 		revert("TokenizedUniswapV3Position: UNAUTHORIZED");
 	}
-	function claim(uint256 tokenId, address to) external nonReentrant {
-		_checkAuthorizedCollateral(tokenId);
-		
+	function _claim(address to, uint256 tokenId) internal returns (uint256, uint256) {		
 		Position memory position = positions[tokenId];
 		
 		address pool = getPool(position.fee);
@@ -263,7 +261,7 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 			uint256 feeCollected0,
 			uint256 feeCollected1
 		) = _getfeeCollectedAndGrowth(position, pool);
-		require(feeCollected0 > 0 || feeCollected1 > 0, "TokenizedUniswapV3Position: NO_FEES_COLLECTED");
+		if (feeCollected0 == 0 && feeCollected1 == 0) return (0, 0);
 		
 		IUniswapV3Pool(pool).collect(to, position.tickLower, position.tickUpper, safe128(feeCollected0), safe128(feeCollected1));
 		
@@ -271,6 +269,12 @@ contract TokenizedUniswapV3Position is ITokenizedUniswapV3Position, INFTLP, Impe
 		positions[tokenId].feeGrowthInside1LastX128 = newFeeGrowthInside1LastX128;
 		
 		emit UpdatePositionFeeGrowthInside(tokenId, newFeeGrowthInside0LastX128, newFeeGrowthInside1LastX128);
+		
+		return (feeCollected0, feeCollected1);
+	}
+	function claim(address to, uint256 tokenId) external nonReentrant returns (uint256, uint256) {
+		_checkAuthorizedCollateral(tokenId);
+		return _claim(to, tokenId);
 	}
 	
 	/*** Utilities ***/
