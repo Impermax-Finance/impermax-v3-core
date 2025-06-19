@@ -43,6 +43,7 @@ contract('Highlevel-UniswapV2', function (accounts) {
 	const reservesAdmin = accounts[2];		
 	const borrower = accounts[3];		
 	const lender = accounts[4];		
+	const admin = accounts[5];		
 	let liquidatorContract0;
 	let liquidatorContract1;
 	const reservesManager = accounts[6];	
@@ -97,7 +98,7 @@ contract('Highlevel-UniswapV2', function (accounts) {
 	});
 
 	it('deploy factory', async () => {
-		factory = await makeFactory({reservesAdmin});
+		factory = await makeFactory({admin, reservesAdmin});
 		await factory._setReservesManager(reservesManager, {from: reservesAdmin});
 	});
 
@@ -129,6 +130,9 @@ contract('Highlevel-UniswapV2', function (accounts) {
 		//console.log(receiptInitialize.receipt.gasUsed + ' initialize');
 		liquidatorContract0 = await Liquidator.new(token0.address, borrowable0.address);
 		liquidatorContract1 = await Liquidator.new(token1.address, borrowable1.address);
+
+		await collateral._setLiquidationIncentive(bnMantissa(1.02), {from: admin});
+		await collateral._setLiquidationFee(bnMantissa(0.02), {from: admin});
 	});
 	
 	it('settings sanity check', async () => {

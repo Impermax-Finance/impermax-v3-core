@@ -42,9 +42,9 @@ contract('CSetter', function (accounts) {
 	
 	it('initialization check', async () => {
 		const safetyMarginSqrt = bnMantissa(Math.sqrt(2.5));
-		const liquidationIncentive = bnMantissa(1.02);
-		const liquidationFee = bnMantissa(0.02);
-		const liquidationPenalty = bnMantissa(1.04);
+		const liquidationIncentive = bnMantissa(1.05);
+		const liquidationFee = bnMantissa(0.08);
+		const liquidationPenalty = bnMantissa(1.13);
 		expectAlmostEqualMantissa(await collateral.safetyMarginSqrt(), safetyMarginSqrt);
 		expectAlmostEqualMantissa(await collateral.liquidationIncentive(), liquidationIncentive);
 		expectAlmostEqualMantissa(await collateral.liquidationFee(), liquidationFee);
@@ -86,32 +86,32 @@ contract('CSetter', function (accounts) {
 	it('safety margin boundaries', async () => {
 		const failMin = slightlyDecrease(SAFETY_MARGIN_MIN);
 		const succeedMin = slightlyIncrease(SAFETY_MARGIN_MIN);
-		const succeedMax = slightlyDecrease(SAFETY_MARGIN_MAX);
+		const succeedMax = slightlyDecrease(SAFETY_MARGIN_TEST);
 		const failMax = slightlyIncrease(SAFETY_MARGIN_MAX);
-		await expectRevert(collateral._setSafetyMarginSqrt(failMin, {from: admin}), 'ImpermaxV3Collateral: INVALID_SETTING');
-		await collateral._setSafetyMarginSqrt(succeedMin, {from: admin});
-		expectAlmostEqualMantissa(await collateral.safetyMarginSqrt(), succeedMin);
+		await expectRevert(collateral._setSafetyMarginSqrt(failMax, {from: admin}), 'ImpermaxV3Collateral: INVALID_SETTING');
 		await collateral._setSafetyMarginSqrt(succeedMax, {from: admin});
 		expectAlmostEqualMantissa(await collateral.safetyMarginSqrt(), succeedMax);
-		await expectRevert(collateral._setSafetyMarginSqrt(failMax, {from: admin}), 'ImpermaxV3Collateral: INVALID_SETTING');
+		await expectRevert(collateral._setSafetyMarginSqrt.call(failMin, {from: admin}), 'ImpermaxV3Collateral: INVALID_SETTING');
+		await collateral._setSafetyMarginSqrt(succeedMin, {from: admin});
+		expectAlmostEqualMantissa(await collateral.safetyMarginSqrt(), succeedMin);
 	});
 
 	it('liquidation incentive boundaries', async () => {
 		const failMin = slightlyDecrease(LIQUIDATION_INCENTIVE_MIN);
 		const succeedMin = slightlyIncrease(LIQUIDATION_INCENTIVE_MIN);
-		const succeedMax = slightlyDecrease(LIQUIDATION_INCENTIVE_MAX);
-		const failMax = slightlyIncrease(LIQUIDATION_INCENTIVE_MAX);
+		const succeedMax = slightlyDecrease(LIQUIDATION_INCENTIVE_TEST);
+		const failMax = slightlyIncrease(LIQUIDATION_INCENTIVE_TEST);
+		await expectRevert(collateral._setLiquidationIncentive(failMax, {from: admin}), 'ImpermaxV3Collateral: INVALID_SETTING');
+		await collateral._setLiquidationIncentive(succeedMax, {from: admin});
+		expectAlmostEqualMantissa(await collateral.liquidationIncentive(), succeedMax);
 		await expectRevert(collateral._setLiquidationIncentive(failMin, {from: admin}), 'ImpermaxV3Collateral: INVALID_SETTING');
 		await collateral._setLiquidationIncentive(succeedMin, {from: admin});
 		expectAlmostEqualMantissa(await collateral.liquidationIncentive(), succeedMin);
-		await collateral._setLiquidationIncentive(succeedMax, {from: admin});
-		expectAlmostEqualMantissa(await collateral.liquidationIncentive(), succeedMax);
-		await expectRevert(collateral._setLiquidationIncentive(failMax, {from: admin}), 'ImpermaxV3Collateral: INVALID_SETTING');
 	});
 
 	it('liquidation fee boundaries', async () => {
-		const succeedMax = slightlyDecrease(LIQUIDATION_FEE_MAX);
-		const failMax = slightlyIncrease(LIQUIDATION_FEE_MAX);
+		const succeedMax = slightlyDecrease(LIQUIDATION_FEE_TEST);
+		const failMax = slightlyIncrease(LIQUIDATION_FEE_TEST);
 		await collateral._setLiquidationFee(succeedMax, {from: admin});
 		expectAlmostEqualMantissa(await collateral.liquidationFee(), succeedMax);
 		await expectRevert(collateral._setLiquidationFee(failMax, {from: admin}), 'ImpermaxV3Collateral: INVALID_SETTING');
