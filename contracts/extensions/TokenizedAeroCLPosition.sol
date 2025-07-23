@@ -66,7 +66,6 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		pool = ICLFactory(clFactory).getPool(token0, token1, tickSpacing);
 		require(pool != address(0), "TokenizedAeroCLPosition: UNSUPPORTED_TICK_SPACING");
 	}
-	function getGauge(int24 tickSpacing) public view returns (address gauge) {
 		gauge = tickSpacingToGauge[tickSpacing];
 		require(gauge != address(0), "TokenizedAeroCLPosition: UNSUPPORTED_TICK_SPACING");
 	}
@@ -92,8 +91,8 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 	) {
 		require(safetyMarginSqrt >= 1e18, "TokenizedAeroCLPosition: INVALID_SAFETY_MARGIN");
 		
-		(,,,,int24 tickSpacing, int24 tickLower, int24 tickUpper, uint128 liquidity) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
-		_requireOwnedNfp(tokenId, tickSpacing);
+		(,,,,, int24 tickLower, int24 tickUpper, uint128 liquidity) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
+		_requireOwnedNfp(tokenId);
 		
 		uint160 pa = tickLower.getSqrtRatioAtTick();
 		uint160 pb = tickUpper.getSqrtRatioAtTick();
@@ -120,11 +119,11 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		
 		require(IERC721(nfpManager).ownerOf(tokenId) == address(this), "TokenizedAeroCLPosition: NFT_NOT_RECEIVED");
 		
-		(,,address _token0, address _token1, int24 tickSpacing,,,) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
+		(,,address _token0, address _token1,,,,) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
 		require(_token0 == token0, "TokenizedAeroCLPosition: INCOMPATIBLE_POSITION");
 		require(_token1 == token1, "TokenizedAeroCLPosition: INCOMPATIBLE_POSITION");
 		
-		address gauge = getGauge(tickSpacing);
+		address gauge = getGauge(tokenId);
 		IERC721(nfpManager).approve(gauge, tokenId);
 		ICLGaugeAero(gauge).deposit(tokenId);
 	}
@@ -134,13 +133,12 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		_checkAuthorized(_requireOwned(tokenId), msg.sender, tokenId);
 		_burn(tokenId);
 		
-		(,,,,int24 tickSpacing,,,) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
-		address gauge = getGauge(tickSpacing);
+		address gauge = getGauge(tokenId);
 		ICLGaugeAero(gauge).withdraw(tokenId);
 		
 		uint256 claimAmount = _getClaimAmount(tokenId);
 		rewardOwed[tokenId] = 0;
-		if (claimAmount > 0) TransferHelper.safeTransfer(rewardToken, to, claimAmount);
+		if (claimAmount > 0) TransferHelper.safeTransfer(rewardsToken, to, claimAmount);
 		IERC721(nfpManager).safeTransferFrom(address(this), to, tokenId);
 		
 		emit UpdatePositionReward(tokenId, 0, claimAmount);
@@ -188,8 +186,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		_checkAuthorized(owner, msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
 		
-		(,,,,int24 tickSpacing,int24 tickLower,int24 tickUpper,uint128 liquidity) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
-		address gauge = getGauge(tickSpacing);
+		address gauge = getGauge(tokenId);
 		ICLGaugeAero(gauge).withdraw(tokenId);
 		
 		newTokenId = _decreaseAndMint(tokenId, percentage, tickSpacing, tickLower, tickUpper, liquidity);
@@ -253,8 +250,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 	function claim(uint256 tokenId, address to) external nonReentrant updateReward returns (uint256 claimAmount) {
 		_checkAuthorizedCollateral(tokenId);
 		
-		(,,,,int24 tickSpacing,,,) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
-		address gauge = getGauge(tickSpacing);
+		address gauge = getGauge(tokenId);
 		ICLGaugeAero(gauge).getReward(tokenId);
 		
 		claimAmount = _getClaimAmount(tokenId);
@@ -277,11 +273,16 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 	
 	/*** Utilities ***/
 	
-	function _requireOwnedNfp(uint tokenId, int24 tickSpacing) internal {
+	function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data) external pure returns (bytes4 returnValue) {
+		operator; from; tokenId; data;
+		return bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"));
+	}
+	
+	function _requireOwnedNfp(uint tokenId) internal {
 		_requireOwned(tokenId);
 		address owner = IERC721(nfpManager).ownerOf(tokenId);
 		if (owner == address(this)) return;
-		address gauge = getGauge(tickSpacing);
+		address gauge = getGauge(tokenId);
 		require(owner == gauge);
 		// this will revert if we're not the onwer of the staked token
 		ICLGaugeAero(gauge).earned(address(this), tokenId);

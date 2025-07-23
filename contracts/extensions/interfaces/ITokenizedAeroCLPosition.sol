@@ -44,7 +44,7 @@ interface ITokenizedAeroCLPosition {
 	function rewardsToken() external view returns (address);
 	
 	function getPool(int24 tickSpacing) external view returns (address pool);
-	function getGauge(int24 tickSpacing) external view returns (address gauge);
+	function getGauge(uint256 tokenId) external view returns (address gauge);
 	
 	function oraclePriceSqrtX96() external returns (uint256);
 	
