@@ -41,7 +41,7 @@ interface ITokenizedAeroCLPosition {
 	function clFactory() external view returns (address);
 	function nfpManager() external view returns (address);
 	function oracle() external view returns (address);
-	function rewardToken() external view returns (address);
+	function rewardsToken() external view returns (address);
 	
 	function getPool(int24 tickSpacing) external view returns (address pool);
 	function getGauge(int24 tickSpacing) external view returns (address gauge);
@@ -58,7 +58,7 @@ interface ITokenizedAeroCLPosition {
 		address _oracle, 
 		address _token0, 
 		address _token1,
-		address _rewardToken
+		address _rewardsToken
 	) external;
 	
 	function mint(address to, uint256 tokenId, bytes calldata data) external;

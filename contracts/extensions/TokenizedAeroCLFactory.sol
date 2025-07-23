@@ -12,20 +12,20 @@ contract TokenizedAeroCLFactory is ITokenizedAeroCLFactory {
 	address public clFactory;
 	address public nfpManager;
 	address public oracle;
-	address public rewardToken;
+	address public rewardsToken;
 	
 	ITokenizedAeroCLDeployer public deployer;
 
 	mapping(address => mapping(address => address)) public getNFTLP;
 	address[] public allNFTLP;
 
-	constructor(address _admin, address _clFactory, address _nfpManager, ITokenizedAeroCLDeployer _deployer, address _oracle, address _rewardToken) public {
+	constructor(address _admin, address _clFactory, address _nfpManager, ITokenizedAeroCLDeployer _deployer, address _oracle, address _rewardsToken) public {
 		admin = _admin;
 		clFactory = _clFactory;
 		nfpManager = _nfpManager;
 		deployer = _deployer;
 		oracle = _oracle;
-		rewardToken = _rewardToken;
+		rewardsToken = _rewardsToken;
 		emit NewAdmin(address(0), _admin);
 	}
 
@@ -39,7 +39,7 @@ contract TokenizedAeroCLFactory is ITokenizedAeroCLFactory {
 		require(token0 != address(0));
 		require(getNFTLP[token0][token1] == address(0), "TokenizedAeroCLFactory: PAIR_EXISTS");
 		NFTLP = deployer.deployNFTLP(token0, token1);
-		ITokenizedAeroCLPosition(NFTLP)._initialize(clFactory, nfpManager, oracle, token0, token1, rewardToken);
+		ITokenizedAeroCLPosition(NFTLP)._initialize(clFactory, nfpManager, oracle, token0, token1, rewardsToken);
 		getNFTLP[token0][token1] = NFTLP;
 		getNFTLP[token1][token0] = NFTLP;
 		allNFTLP.push(NFTLP);

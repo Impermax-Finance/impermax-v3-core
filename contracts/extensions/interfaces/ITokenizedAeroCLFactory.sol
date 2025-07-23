@@ -13,7 +13,7 @@ interface ITokenizedAeroCLFactory {
 	function nfpManager() external view returns (address);
 	function deployer() external view returns (address);
 	function oracle() external view returns (address);
-	function rewardToken() external view returns (address);
+	function rewardsToken() external view returns (address);
 	
 	function getNFTLP(address tokenA, address tokenB) external view returns (address);
 	function allNFTLP(uint) external view returns (address);

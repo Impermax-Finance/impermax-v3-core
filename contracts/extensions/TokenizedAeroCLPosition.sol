@@ -27,7 +27,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 	address public oracle;
 	address public token0;
 	address public token1;
-	address public rewardToken;
+	address public rewardsToken;
 	
 	mapping(int24 => address) public tickSpacingToGauge;
 	
@@ -43,7 +43,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		address _oracle, 
 		address _token0, 
 		address _token1,
-		address _rewardToken
+		address _rewardsToken
 	) external {
 		require(factory == address(0), "Impermax: FACTORY_ALREADY_SET"); // sufficient check
 		factory = msg.sender;
@@ -53,7 +53,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		oracle = _oracle;
 		token0 = _token0;
 		token1 = _token1;
-		rewardToken = _rewardToken;
+		rewardsToken = _rewardsToken;
 		
 		IERC20(token0).approve(nfpManager, uint256(-1));
 		IERC20(token1).approve(nfpManager, uint256(-1));
@@ -72,11 +72,11 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 	}
 	
 	function _updateReward() internal {
-		totalRewardBalance = IERC20(rewardToken).balanceOf(address(this));
+		totalRewardBalance = IERC20(rewardsToken).balanceOf(address(this));
 		emit SyncReward(totalRewardBalance);
 	}
 	function _getClaimAmount(uint256 tokenId) internal view returns (uint256 claimAmount) {
-		uint256 rewardBalance = IERC20(rewardToken).balanceOf(address(this));
+		uint256 rewardBalance = IERC20(rewardsToken).balanceOf(address(this));
 		return rewardOwed[tokenId].add(rewardBalance.sub(totalRewardBalance));
 	}
 	
@@ -259,7 +259,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		
 		claimAmount = _getClaimAmount(tokenId);
 		rewardOwed[tokenId] = 0;
-		if (claimAmount > 0) TransferHelper.safeTransfer(rewardToken, to, claimAmount);
+		if (claimAmount > 0) TransferHelper.safeTransfer(rewardsToken, to, claimAmount);
 		
 		emit UpdatePositionReward(tokenId, 0, claimAmount);
 	}
