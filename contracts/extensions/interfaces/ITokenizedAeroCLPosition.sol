@@ -63,5 +63,7 @@ interface ITokenizedAeroCLPosition {
 	
 	function mint(address to, uint256 tokenId, bytes calldata data) external;
 	function redeem(address to, uint256 tokenId) external;	
+	function increaseLiquidity(uint256 tokenId) external returns (uint128 liquidity, uint256 amount0, uint256 amount1);
 	function claim(uint256 tokenId, address to) external returns (uint256 claimAmount);
+	function skim(address to) external returns (uint256 balance0, uint256 balance1);
 }

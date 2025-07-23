@@ -15,6 +15,7 @@ import "./interfaces/INftlpCallee.sol";
 import "../libraries/TransferHelper.sol";
 import "./libraries/LiquidityAmounts.sol";
 import "./libraries/TickMath.sol";
+import "./libraries/NfpmAeroInteractions.sol";
 
 contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxERC721 {
 	using TickMath for int24;
@@ -66,6 +67,8 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		pool = ICLFactory(clFactory).getPool(token0, token1, tickSpacing);
 		require(pool != address(0), "TokenizedAeroCLPosition: UNSUPPORTED_TICK_SPACING");
 	}
+	function getGauge(uint256 tokenId) public view returns (address gauge) {
+		(,,,,int24 tickSpacing,,,) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
 		gauge = tickSpacingToGauge[tickSpacing];
 		require(gauge != address(0), "TokenizedAeroCLPosition: UNSUPPORTED_TICK_SPACING");
 	}
@@ -144,42 +147,6 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		emit UpdatePositionReward(tokenId, 0, claimAmount);
 	}
 	
-	function _decreaseAndMint(uint256 tokenId, uint256 percentage, int24 tickSpacing, int24 tickLower, int24 tickUpper, uint128 liquidity) internal returns (uint256 newTokenId) {
-		uint128 liquidityToRemove = safe128(percentage.mul(liquidity).div(1e18));
-		(uint256 amount0, uint256 amount1) = INonfungiblePositionManagerAero(nfpManager).decreaseLiquidity(
-			INonfungiblePositionManagerAero.DecreaseLiquidityParams({
-				tokenId: tokenId,
-				liquidity: liquidityToRemove,
-				amount0Min: 0,
-				amount1Min: 0,
-				deadline: uint256(-1)
-			})
-		);
-		INonfungiblePositionManagerAero(nfpManager).collect(
-			INonfungiblePositionManagerAero.CollectParams({
-				tokenId: tokenId,
-				recipient: address(this),
-				amount0Max: uint128(-1),
-				amount1Max: uint128(-1)
-			})
-		);
-		(newTokenId,,,) = INonfungiblePositionManagerAero(nfpManager).mint(
-			INonfungiblePositionManagerAero.MintParams({
-				token0: token0,
-				token1: token1,
-				tickSpacing: tickSpacing,
-				tickLower: tickLower,
-				tickUpper: tickUpper,
-				amount0Desired: amount0,
-				amount1Desired: amount1,
-				amount0Min: 0,
-				amount1Min: 0,
-				recipient: address(this),
-				deadline: uint256(-1),
-				sqrtPriceX96: 0
-			})
-		);
-	}
 	function split(uint256 tokenId, uint256 percentage) external nonReentrant updateReward returns (uint256 newTokenId) {
 		require(percentage <= 1e18, "TokenizedAeroCLPosition: ABOVE_100_PERCENT");
 		address owner = _requireOwned(tokenId);
@@ -189,7 +156,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		address gauge = getGauge(tokenId);
 		ICLGaugeAero(gauge).withdraw(tokenId);
 		
-		newTokenId = _decreaseAndMint(tokenId, percentage, tickSpacing, tickLower, tickUpper, liquidity);
+		newTokenId = NfpmAeroInteractions.decreaseAndMint(nfpManager, tokenId, percentage);
 		
 		IERC721(nfpManager).approve(gauge, tokenId);
 		ICLGaugeAero(gauge).deposit(tokenId);
@@ -203,21 +170,11 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		emit UpdatePositionReward(tokenId, claimAmount, 0);
 	}
 	
-	function increaseLiquidity(uint256 tokenId, uint256 amount0Desired, uint256 amount1Desired) external nonReentrant updateReward returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
-		(,,,,int24 tickSpacing,,,) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
-		address gauge = getGauge(tickSpacing);
+	function increaseLiquidity(uint256 tokenId) external nonReentrant updateReward returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
+		address gauge = getGauge(tokenId);
 		ICLGaugeAero(gauge).withdraw(tokenId);
 		
-		(liquidity, amount0, amount1) = INonfungiblePositionManagerAero(nfpManager).increaseLiquidity(
-			INonfungiblePositionManagerAero.IncreaseLiquidityParams({
-				tokenId: tokenId,
-				amount0Desired: amount0Desired,
-				amount1Desired: amount1Desired,
-				amount0Min: 0,
-				amount1Min: 0,
-				deadline: uint(-1)
-			})
-		);
+		(liquidity, amount0, amount1) = NfpmAeroInteractions.increase(nfpManager, tokenId);
 			
 		IERC721(nfpManager).approve(gauge, tokenId);
 		ICLGaugeAero(gauge).deposit(tokenId);
@@ -286,11 +243,6 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		require(owner == gauge);
 		// this will revert if we're not the onwer of the staked token
 		ICLGaugeAero(gauge).earned(address(this), tokenId);
-	}
-
-	function safe128(uint n) internal pure returns (uint128) {
-		require(n < 2**128, "Impermax: SAFE128");
-		return uint128(n);
 	}
 
 	function safe160(uint n) internal pure returns (uint160) {
