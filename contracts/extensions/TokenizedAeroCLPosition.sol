@@ -122,13 +122,16 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		
 		require(IERC721(nfpManager).ownerOf(tokenId) == address(this), "TokenizedAeroCLPosition: NFT_NOT_RECEIVED");
 		
-		(,,address _token0, address _token1,,,,) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
+		(,,address _token0, address _token1, int24 tickSpacing, int24 tickLower, int24 tickUpper, uint128 liquidity) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
 		require(_token0 == token0, "TokenizedAeroCLPosition: INCOMPATIBLE_POSITION");
 		require(_token1 == token1, "TokenizedAeroCLPosition: INCOMPATIBLE_POSITION");
 		
 		address gauge = getGauge(tokenId);
 		IERC721(nfpManager).approve(gauge, tokenId);
 		ICLGaugeAero(gauge).deposit(tokenId);
+		
+		emit MintPosition(tokenId, tickSpacing, tickLower, tickUpper);
+		emit UpdatePositionLiquidity(tokenId, liquidity);
 	}
 
 	// this low-level function should be called from another contract
@@ -144,6 +147,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		if (claimAmount > 0) TransferHelper.safeTransfer(rewardsToken, to, claimAmount);
 		IERC721(nfpManager).safeTransferFrom(address(this), to, tokenId);
 		
+		emit UpdatePositionLiquidity(tokenId, 0);
 		emit UpdatePositionReward(tokenId, 0, claimAmount);
 	}
 	
@@ -156,7 +160,8 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		address gauge = getGauge(tokenId);
 		ICLGaugeAero(gauge).withdraw(tokenId);
 		
-		newTokenId = NfpmAeroInteractions.decreaseAndMint(nfpManager, tokenId, percentage);
+		uint128 oldTokenLiquidity; uint128 newTokenLiquidity;
+		(newTokenId, oldTokenLiquidity, newTokenLiquidity) = NfpmAeroInteractions.decreaseAndMint(nfpManager, tokenId, percentage);
 		
 		IERC721(nfpManager).approve(gauge, tokenId);
 		ICLGaugeAero(gauge).deposit(tokenId);
@@ -167,6 +172,9 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		uint256 claimAmount = _getClaimAmount(tokenId);
 		rewardOwed[tokenId] = claimAmount;
 		
+		emit SplitPosition(tokenId, newTokenId);
+		emit UpdatePositionLiquidity(tokenId, oldTokenLiquidity);
+		emit UpdatePositionLiquidity(newTokenId, newTokenLiquidity);
 		emit UpdatePositionReward(tokenId, claimAmount, 0);
 	}
 	
@@ -174,7 +182,8 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		address gauge = getGauge(tokenId);
 		ICLGaugeAero(gauge).withdraw(tokenId);
 		
-		(liquidity, amount0, amount1) = NfpmAeroInteractions.increase(nfpManager, tokenId);
+		uint128 totalLiquidity;
+		(liquidity, totalLiquidity, amount0, amount1) = NfpmAeroInteractions.increase(nfpManager, tokenId);
 			
 		IERC721(nfpManager).approve(gauge, tokenId);
 		ICLGaugeAero(gauge).deposit(tokenId);
@@ -182,6 +191,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		uint256 claimAmount = _getClaimAmount(tokenId);
 		rewardOwed[tokenId] = claimAmount;
 		
+		emit UpdatePositionLiquidity(tokenId, totalLiquidity);
 		emit UpdatePositionReward(tokenId, claimAmount, 0);
 	}
 	

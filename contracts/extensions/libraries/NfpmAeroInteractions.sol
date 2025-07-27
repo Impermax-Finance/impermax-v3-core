@@ -26,9 +26,9 @@ library NfpmAeroInteractions {
 		int24 tickLower,
 		int24 tickUpper,
 		address recipient
-	) public returns (uint256 tokenId) {
+	) public returns (uint256 tokenId, uint128 liquidity) {
 		(uint256 amount0, uint256 amount1) = prepareTransfer(nfpManager, token0, token1);
-		(tokenId,,,) = INonfungiblePositionManagerAero(nfpManager).mint(
+		(tokenId, liquidity,,) = INonfungiblePositionManagerAero(nfpManager).mint(
 			INonfungiblePositionManagerAero.MintParams({
 				token0: token0,
 				token1: token1,
@@ -46,10 +46,10 @@ library NfpmAeroInteractions {
 		);
 	}
 
-	function increase(address nfpManager, uint256 tokenId) external returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
-		(,,address token0, address token1,,,,) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
+	function increase(address nfpManager, uint256 tokenId) external returns (uint128 newLiquidity, uint128 totalLiquidity, uint256 amount0, uint256 amount1) {
+		(,,address token0, address token1,,,, uint256 initialLiquidity) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
 		(amount0, amount1) = prepareTransfer(nfpManager, token0, token1);
-		(liquidity, amount0, amount1) = INonfungiblePositionManagerAero(nfpManager).increaseLiquidity(
+		(newLiquidity, amount0, amount1) = INonfungiblePositionManagerAero(nfpManager).increaseLiquidity(
 			INonfungiblePositionManagerAero.IncreaseLiquidityParams({
 				tokenId: tokenId,
 				amount0Desired: amount0,
@@ -59,12 +59,13 @@ library NfpmAeroInteractions {
 				deadline: uint(-1)
 			})
 		);
+		totalLiquidity = safe128(initialLiquidity.add(newLiquidity));
 	}
 	
-	function decrease(address nfpManager, uint256 tokenId, uint256 percentage, address to, uint amount0Min, uint amount1Min) public returns (uint256 amount0, uint256 amount1) {
+	function decrease(address nfpManager, uint256 tokenId, uint256 percentage, address to, uint amount0Min, uint amount1Min) public returns (uint256 amount0, uint256 amount1, uint128 liquidityToRemove, uint128 totalLiquidity) {
 		require(percentage <= 1e18, "NfpmAeroInteractions: ABOVE_100_PERCENT");
-		(,,,,,,,uint128 liquidity) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
-		uint128 liquidityToRemove = safe128(percentage.mul(liquidity).div(1e18));
+		(,,,,,,,uint256 initialLiquidity) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
+		liquidityToRemove = safe128(percentage.mul(initialLiquidity).div(1e18));
 		(amount0, amount1) = INonfungiblePositionManagerAero(nfpManager).decreaseLiquidity(
 			INonfungiblePositionManagerAero.DecreaseLiquidityParams({
 				tokenId: tokenId,
@@ -83,12 +84,14 @@ library NfpmAeroInteractions {
 			})
 		);
 		if (percentage == 1e18) INonfungiblePositionManagerAero(nfpManager).burn(tokenId);
+		totalLiquidity = safe128(initialLiquidity.sub(liquidityToRemove));
 	}
 	
-	function decreaseAndMint(address nfpManager, uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId) {
+	function decreaseAndMint(address nfpManager, uint256 tokenId, uint256 percentage) external returns (uint256 newTokenId, uint128 oldTokenLiquidity, uint128 newTokenLiquidity) {
 		(,,address token0,address token1,int24 tickSpacing,int24 tickLower,int24 tickUpper,) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
-		(uint256 amount0, uint256 amount1) = decrease(nfpManager, tokenId, percentage, address(this), 0, 0);
-		newTokenId = mint(nfpManager, token0, token1, tickSpacing, tickLower, tickUpper, address(this));
+		uint256 amount0; uint256 amount1;
+		(amount0, amount1,, oldTokenLiquidity) = decrease(nfpManager, tokenId, percentage, address(this), 0, 0);
+		(newTokenId, newTokenLiquidity) = mint(nfpManager, token0, token1, tickSpacing, tickLower, tickUpper, address(this));
 	}
 
 	function safe128(uint n) internal pure returns (uint128) {

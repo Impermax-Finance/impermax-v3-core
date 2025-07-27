@@ -48,6 +48,9 @@ interface ITokenizedAeroCLPosition {
 	
 	function oraclePriceSqrtX96() external returns (uint256);
 	
+	event MintPosition(uint256 indexed tokenId, int24 tickSpacing, int24 tickLower, int24 tickUpper);
+	event UpdatePositionLiquidity(uint256 indexed tokenId, uint256 liquidity);
+	event SplitPosition(uint256 indexed tokenId, uint256 newTokenId);
 	event SyncReward(uint256 totalRewardBalance);
 	event UpdatePositionReward(uint256 indexed tokenId, uint256 rewardOwed, uint256 claimAmount);
 	event GaugeAdded(int24 tickSpacing, address gauge);
