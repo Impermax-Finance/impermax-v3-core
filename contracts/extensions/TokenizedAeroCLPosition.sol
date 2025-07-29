@@ -48,7 +48,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 	) external {
 		require(factory == address(0), "Impermax: FACTORY_ALREADY_SET"); // sufficient check
 		factory = msg.sender;
-		_setName("Tokenized Uniswap V3", "NFT-UNI-V3");
+		_setName("Tokenized Aero CL", "NFT-AERO-CL");
 		clFactory = _clFactory;
 		nfpManager = _nfpManager;
 		oracle = _oracle;
