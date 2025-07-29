@@ -83,8 +83,9 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 	}
 	function _claimReward(uint256 tokenId, address to) internal {
 		uint256 claimAmount = rewardOwed[tokenId];
+		if (claimAmount == 0) return;
 		rewardOwed[tokenId] = 0;
-		if (claimAmount > 0) TransferHelper.safeTransfer(rewardsToken, to, claimAmount);
+		TransferHelper.safeTransfer(rewardsToken, to, claimAmount);
 		totalRewardBalance = totalRewardBalance.sub(claimAmount);
 		emit UpdatePositionReward(tokenId, 0, claimAmount);
 		emit SyncReward(totalRewardBalance);
@@ -109,9 +110,9 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		INFTLP.RealXYs memory realXYs
 	) {
 		require(safetyMarginSqrt >= 1e18, "TokenizedAeroCLPosition: INVALID_SAFETY_MARGIN");
+		_requireOwnedNfp(tokenId);
 		
 		(,,,,, int24 tickLower, int24 tickUpper, uint128 liquidity) = INonfungiblePositionManagerAero(nfpManager).positions(tokenId);
-		_requireOwnedNfp(tokenId);
 		
 		uint160 pa = tickLower.getSqrtRatioAtTick();
 		uint160 pb = tickUpper.getSqrtRatioAtTick();
@@ -184,6 +185,8 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		emit UpdatePositionLiquidity(newTokenId, newTokenLiquidity);
 	}
 	
+	// this low-level function should be called from another contract
+	// uses token0 and token1 available balance to increase the liquidity of the position
 	function increaseLiquidity(uint256 tokenId) external nonReentrant returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
 		address gauge = getGauge(tokenId);
 		_withdraw(tokenId, gauge);
@@ -215,7 +218,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		if (IERC721(collateral).isApprovedForAll(owner, msg.sender)) return;
 		revert("TokenizedAeroCLPosition: UNAUTHORIZED");
 	}
-	function claim(uint256 tokenId, address to) external nonReentrant returns (uint256 claimAmount) {
+	function claim(address to, uint256 tokenId) external nonReentrant returns (uint256 claimAmount) {
 		_checkAuthorizedCollateral(tokenId);
 		
 		address gauge = getGauge(tokenId);
@@ -242,14 +245,12 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 		return bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"));
 	}
 	
-	function _requireOwnedNfp(uint tokenId) internal {
+	function _requireOwnedNfp(uint tokenId) internal view {
 		_requireOwned(tokenId);
 		address owner = IERC721(nfpManager).ownerOf(tokenId);
 		if (owner == address(this)) return;
 		address gauge = getGauge(tokenId);
-		require(owner == gauge);
-		// this will revert if we're not the onwer of the staked token
-		ICLGaugeAero(gauge).earned(address(this), tokenId);
+		require(owner == gauge && ICLGaugeAero(gauge).stakedContains(address(this), tokenId), "TokenizedAeroCLPosition: NOT_OWNED");
 	}
 
 	function safe160(uint n) internal pure returns (uint160) {
