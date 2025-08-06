@@ -167,7 +167,7 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 	}
 	
 	function split(uint256 tokenId, uint256 percentage) external nonReentrant returns (uint256 newTokenId) {
-		require(percentage < 1e18, "TokenizedAeroCLPosition: ABOVE_100_PERCENT");
+		require(percentage < 1e18 && percentage > 0, "TokenizedAeroCLPosition: ABOVE_100_PERCENT");
 		address owner = _requireOwned(tokenId);
 		_checkAuthorized(owner, msg.sender, tokenId);
 		_approve(address(0), tokenId, address(0)); // reset approval
