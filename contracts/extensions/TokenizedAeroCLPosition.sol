@@ -34,6 +34,8 @@ contract TokenizedAeroCLPosition is ITokenizedAeroCLPosition, INFTLP, ImpermaxER
 	
 	uint public totalRewardBalance = 0;
 	mapping(uint256 => uint256) public rewardOwed;
+
+	function () external payable {}
 			
 	/*** Global state ***/
 	
