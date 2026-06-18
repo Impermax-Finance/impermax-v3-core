@@ -1,5 +1,3 @@
-Notice: this code is released under [Business Source License](https://docs.impermax.finance/bsl-business-source-license)
-
 ### Impermax V3 Core
 Impermax V3 inherits most of its smart contracts architecture from the first version of Impermax. To have a general undestanding of the scope of Impermax you can read the original [whitepaper](https://www.impermax.finance/documents/whitepaper.pdf).
 
